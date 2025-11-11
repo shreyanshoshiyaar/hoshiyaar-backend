@@ -112,6 +112,7 @@ router.post('/defaults/import', async (req, res) => {
           chapterId,
           unitId,
           moduleId: targetModuleId || undefined,
+          lessonIndex: typeof c.lessonIndex === 'number' ? c.lessonIndex : undefined,
           type: c.type === 'concept' ? 'statement' : c.type,
           question: c.question,
           text: c.text,

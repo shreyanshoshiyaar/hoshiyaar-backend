@@ -8,6 +8,7 @@ import curriculumRoutes from './routes/curriculum.js';
 import { v2 as cloudinary } from 'cloudinary';
 import uploadRoutes from './routes/upload.js';
 import reviewRoutes from './routes/review.js';
+import pointsRoutes from './routes/points.js';
 import Subject from './models/Subject.js';
 import ClassLevel from './models/ClassLevel.js';
 import User from './models/User.js';
@@ -50,7 +51,8 @@ const corsOptions = {
 
 // Middleware
 app.use(cors(corsOptions)); // Enable Cross-Origin Resource Sharing with specific options
-app.use(json()); // Allow the server to accept JSON in the request body
+app.use(json({ limit: '50mb' })); // Allow the server to accept JSON in the request body (increase limit)
+app.use(express.urlencoded({ extended: true, limit: '50mb' })); // For form data
 
 // Define a simple route for the root URL
 app.get('/', (req, res) => {
@@ -68,11 +70,17 @@ app.use('/api/lessons', lessonRoutes); // 👈 ADD THIS LINE
 app.use('/api/curriculum', curriculumRoutes);
 
 
-// Upload routes
-app.use('/api/upload', uploadRoutes);
+// Upload routes with extended timeout for large file uploads
+app.use('/api/upload', (req, res, next) => {
+  req.setTimeout(600000); // 10 minutes timeout for uploads
+  res.setTimeout(600000);
+  next();
+}, uploadRoutes);
 
 // Review routes
 app.use('/api/review', reviewRoutes);
+// Points routes
+app.use('/api/points', pointsRoutes);
 
 
 const PORT = process.env.PORT || 5000;

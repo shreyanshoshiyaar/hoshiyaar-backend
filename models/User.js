@@ -103,6 +103,26 @@ const userSchema = mongoose.Schema(
   }
 );
 
+// Add points fields after schema definition for clarity
+userSchema.add({
+  totalPoints: { type: Number, default: 0 },
+  // Ledger keyed by questionId to enforce idempotent scoring
+  pointsLedger: {
+    type: Map,
+    of: new mongoose.Schema(
+      {
+        awarded: { type: Number, default: 0 }, // net points awarded for this questionId
+        correct: { type: Boolean, default: false },
+        type: { type: String, enum: ['curriculum', 'revision'], default: 'curriculum' },
+        moduleId: { type: String, default: null },
+        attemptedAt: { type: Date, default: Date.now },
+      },
+      { _id: false }
+    ),
+    default: new Map(),
+  },
+});
+
 // Method to compare entered date of birth with the stored date of birth
 userSchema.methods.matchDateOfBirth = async function (enteredDateOfBirth) {
   // Convert both dates to ISO string format for comparison

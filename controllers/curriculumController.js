@@ -145,58 +145,86 @@ export const importCurriculum = async (req, res) => {
     );
 
     for (const lesson of payload.lessons) {
-      const key = String(lesson.lesson_title || '').trim().toLowerCase();
-      let module = titleToModule.get(key);
+      let module = null;
+
+      // Prefer explicit module_id
+      if (payload.module_id) {
+        try {
+          module = await Module.findById(payload.module_id);
+          if (!module) return res.status(400).json({ message: `Provided module_id ${payload.module_id} not found` });
+          if (module.chapterId.toString() !== chapter._id.toString()) {
+            console.warn('[importCurriculum] Provided module_id belongs to different chapter');
+          }
+        } catch (e) {
+          return res.status(400).json({ message: `Invalid module_id ${payload.module_id}` });
+        }
+      }
+
+      // Fallback to title lookup
       if (!module) {
-        nextOrder += 1;
-        module = await Module.create({ chapterId: chapter._id, unitId: unit._id, title: lesson.lesson_title, order: nextOrder });
-        titleToModule.set(key, module);
-      } else {
-        // Clear existing items for this module before re-adding
+        const key = String(lesson.lesson_title || '').trim().toLowerCase();
+        module = titleToModule.get(key);
+        if (!module) {
+          nextOrder += 1;
+          module = await Module.create({ chapterId: chapter._id, unitId: unit._id, title: lesson.lesson_title, order: nextOrder });
+          titleToModule.set(key, module);
+        }
+      }
+
+      // Replace mode: clear existing items first
+      if (payload.replace === true || String(payload.replace).toLowerCase() === 'true') {
         await CurriculumItem.deleteMany({ moduleId: module._id });
       }
 
       let order = 0;
       let createdForThisLesson = 0;
+      const processedIds = [];
       for (const c of (lesson.concepts || [])) {
         order += 1;
         const base = { moduleId: module._id, order, imageUrl: c.imageUrl || c.image || undefined, images: Array.isArray(c.images) ? c.images.filter(Boolean) : undefined };
 
-        // Normalize types and be forgiving with aliases/missing type
         const rawType = String(c.type || '').toLowerCase();
         const isMCQ = rawType === 'multiple-choice' || rawType === 'mcq' || (Array.isArray(c.options) && c.question);
         const isFIB = rawType === 'fill-in-the-blank' || rawType === 'fillups' || rawType === 'fill-in' || (c.question && !Array.isArray(c.options) && typeof c.answer !== 'undefined' && !Array.isArray(c.words));
         const isRearrange = rawType === 'rearrange' || Array.isArray(c.words);
         const isStatement = rawType === 'statement' || rawType === 'concept' || rawType === 'text' || (!isMCQ && !isFIB && !isRearrange && (c.text || c.content));
 
+        const updateData = { ...base };
+        if (isStatement) Object.assign(updateData, { type: 'statement', text: c.text || c.content || '' });
+        else if (isMCQ) Object.assign(updateData, { type: 'multiple-choice', question: c.question || '', options: (c.options || []).filter(Boolean), answer: c.answer });
+        else if (isFIB) Object.assign(updateData, { type: 'fill-in-the-blank', question: c.question || '', answer: c.answer });
+        else if (isRearrange) {
+          const words = Array.isArray(c.words) ? c.words : (Array.isArray(c.options) ? c.options : []);
+          Object.assign(updateData, { type: 'rearrange', question: c.question || '', words, options: words, answer: c.answer });
+        } else Object.assign(updateData, { type: 'statement', text: c.text || c.question || JSON.stringify(c) });
+
         try {
-          if (isStatement) {
-            await CurriculumItem.create({ ...base, type: 'statement', text: c.text || c.content || '' });
-            totalItems += 1;
-            createdForThisLesson += 1;
-          } else if (isMCQ) {
-            await CurriculumItem.create({ ...base, type: 'multiple-choice', question: c.question || '', options: (c.options || []).filter(Boolean), answer: c.answer });
-            totalItems += 1;
-            createdForThisLesson += 1;
-          } else if (isFIB) {
-            await CurriculumItem.create({ ...base, type: 'fill-in-the-blank', question: c.question || '', answer: c.answer });
-            totalItems += 1;
-            createdForThisLesson += 1;
-          } else if (isRearrange) {
-            const words = Array.isArray(c.words) ? c.words : (Array.isArray(c.options) ? c.options : []);
-            await CurriculumItem.create({ ...base, type: 'rearrange', question: c.question || '', words, options: words, answer: c.answer });
-            totalItems += 1;
-            createdForThisLesson += 1;
+          let itemId = null;
+          if (c._id && String(c._id).length === 24) itemId = c._id;
+
+          if (itemId && !(payload.replace === true || String(payload.replace).toLowerCase() === 'true')) {
+            const updated = await CurriculumItem.findByIdAndUpdate(itemId, { $set: updateData }, { new: true, runValidators: true });
+            if (updated) {
+              processedIds.push(updated._id.toString());
+            } else {
+              const created = await CurriculumItem.create(updateData);
+              processedIds.push(created._id.toString());
+            }
           } else {
-            // Fallback: store as statement to avoid silent loss
-            await CurriculumItem.create({ ...base, type: 'statement', text: c.text || c.question || JSON.stringify(c) });
-            totalItems += 1;
-            createdForThisLesson += 1;
+            const created = await CurriculumItem.create(updateData);
+            processedIds.push(created._id.toString());
           }
+          totalItems += 1;
+          createdForThisLesson += 1;
         } catch (_e) {
           skippedItems += 1;
         }
       }
+
+      if (!(payload.replace === true || String(payload.replace).toLowerCase() === 'true') && processedIds.length > 0) {
+        await CurriculumItem.deleteMany({ moduleId: module._id, _id: { $nin: processedIds } });
+      }
+
       perLesson.push({ lesson: lesson.lesson_title, items: createdForThisLesson });
     }
 

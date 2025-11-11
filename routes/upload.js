@@ -1,10 +1,20 @@
 import express from 'express';
-import { uploadMiddleware, uploadImage, uploadManyMiddleware, uploadImages } from '../controllers/uploadController.js';
+import { uploadMiddleware, uploadImage, uploadManyMiddleware, uploadImages, handleMulterError } from '../controllers/uploadController.js';
 
 const router = express.Router();
 
-router.post('/image', uploadMiddleware, uploadImage);
-router.post('/images', uploadManyMiddleware, uploadImages);
+// Wrapper to catch multer errors
+const handleUpload = (middleware, handler) => {
+  return (req, res, next) => {
+    middleware(req, res, (err) => {
+      if (err) return handleMulterError(err, req, res, next);
+      return handler(req, res, next);
+    });
+  };
+};
+
+router.post('/image', handleUpload(uploadMiddleware, uploadImage));
+router.post('/images', handleUpload(uploadManyMiddleware, uploadImages));
 
 export default router;
 

@@ -133,5 +133,45 @@ router.post('/defaults/import', async (req, res) => {
   }
 });
 
+// DELETE /api/review/defaults - delete default revision questions by chapterId and unitId
+router.delete('/defaults', async (req, res) => {
+  try {
+    const { chapterId, unitId } = req.query;
+    
+    // Validate that both chapterId and unitId are provided
+    if (!chapterId || !unitId) {
+      return res.status(400).json({ 
+        message: 'Both chapterId and unitId are required' 
+      });
+    }
+
+    // Build filter to match both chapterId and unitId
+    const filter = {
+      chapterId: new mongoose.Types.ObjectId(String(chapterId)),
+      unitId: new mongoose.Types.ObjectId(String(unitId))
+    };
+
+    // Delete all matching default revision questions
+    const result = await DefaultRevisionQuestion.deleteMany(filter);
+    
+    console.log('[review] deleted default revision questions', { 
+      chapterId, 
+      unitId, 
+      deletedCount: result.deletedCount 
+    });
+
+    return res.json({ 
+      message: 'Default revision questions deleted successfully',
+      deletedCount: result.deletedCount 
+    });
+  } catch (err) {
+    console.error('Error deleting default revision questions', err);
+    return res.status(500).json({ 
+      message: 'Internal server error', 
+      error: String(err?.message || err) 
+    });
+  }
+});
+
 export default router;
 

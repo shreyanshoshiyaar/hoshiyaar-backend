@@ -184,19 +184,42 @@ export const importCurriculum = async (req, res) => {
         const base = { moduleId: module._id, order, imageUrl: c.imageUrl || c.image || undefined, images: Array.isArray(c.images) ? c.images.filter(Boolean) : undefined };
 
         const rawType = String(c.type || '').toLowerCase();
-        const isMCQ = rawType === 'multiple-choice' || rawType === 'mcq' || (Array.isArray(c.options) && c.question);
-        const isFIB = rawType === 'fill-in-the-blank' || rawType === 'fillups' || rawType === 'fill-in' || (c.question && !Array.isArray(c.options) && typeof c.answer !== 'undefined' && !Array.isArray(c.words));
-        const isRearrange = rawType === 'rearrange' || Array.isArray(c.words);
-        const isStatement = rawType === 'statement' || rawType === 'concept' || rawType === 'text' || (!isMCQ && !isFIB && !isRearrange && (c.text || c.content));
+        // Prioritize explicit type field - if type is explicitly set, use it
+        // Otherwise, infer from data structure
+        const hasExplicitType = rawType && rawType !== 'undefined' && rawType !== 'null';
+        
+        let isMCQ = false;
+        let isFIB = false;
+        let isRearrange = false;
+        let isStatement = false;
+        
+        if (hasExplicitType) {
+          // Explicit type takes precedence
+          isMCQ = rawType === 'multiple-choice' || rawType === 'mcq';
+          isFIB = rawType === 'fill-in-the-blank' || rawType === 'fillups' || rawType === 'fill-in';
+          isRearrange = rawType === 'rearrange';
+          isStatement = rawType === 'statement' || rawType === 'concept' || rawType === 'text';
+        } else {
+          // Infer from data structure only if no explicit type
+          isMCQ = Array.isArray(c.options) && c.question && !Array.isArray(c.words);
+          isFIB = c.question && !Array.isArray(c.options) && typeof c.answer !== 'undefined' && !Array.isArray(c.words);
+          isRearrange = Array.isArray(c.words);
+          isStatement = !isMCQ && !isFIB && !isRearrange && (c.text || c.content);
+        }
 
         const updateData = { ...base };
-        if (isStatement) Object.assign(updateData, { type: 'statement', text: c.text || c.content || '' });
-        else if (isMCQ) Object.assign(updateData, { type: 'multiple-choice', question: c.question || '', options: (c.options || []).filter(Boolean), answer: c.answer });
-        else if (isFIB) Object.assign(updateData, { type: 'fill-in-the-blank', question: c.question || '', answer: c.answer });
-        else if (isRearrange) {
+        if (isRearrange) {
           const words = Array.isArray(c.words) ? c.words : (Array.isArray(c.options) ? c.options : []);
           Object.assign(updateData, { type: 'rearrange', question: c.question || '', words, options: words, answer: c.answer });
-        } else Object.assign(updateData, { type: 'statement', text: c.text || c.question || JSON.stringify(c) });
+        } else if (isMCQ) {
+          Object.assign(updateData, { type: 'multiple-choice', question: c.question || '', options: (c.options || []).filter(Boolean), answer: c.answer });
+        } else if (isFIB) {
+          Object.assign(updateData, { type: 'fill-in-the-blank', question: c.question || '', answer: c.answer });
+        } else if (isStatement) {
+          Object.assign(updateData, { type: 'statement', text: c.text || c.content || '' });
+        } else {
+          Object.assign(updateData, { type: 'statement', text: c.text || c.question || JSON.stringify(c) });
+        }
 
         try {
           let itemId = null;

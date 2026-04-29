@@ -1,5 +1,5 @@
 import express from 'express';
-import { awardPoints, getSummary, backfillTotals } from '../controllers/pointsController.js';
+import { awardPoints, getSummary, backfillTotals, getLeaderboard, getSchools } from '../controllers/pointsController.js';
 
 const router = express.Router();
 
@@ -8,6 +8,12 @@ router.put('/award', awardPoints);
 
 // Get points summary for dashboard
 router.get('/summary', getSummary);
+
+// Get leaderboard for a school
+router.get('/leaderboard', getLeaderboard);
+
+// Get unique schools list
+router.get('/schools', getSchools);
 
 // Admin backfill
 router.post('/backfill', backfillTotals);

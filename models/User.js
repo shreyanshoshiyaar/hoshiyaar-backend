@@ -65,6 +65,11 @@ const userSchema = mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    school: {
+      type: String,
+      default: null,
+      trim: true,
+    },
     chaptersProgress: {
       type: [
         new mongoose.Schema(

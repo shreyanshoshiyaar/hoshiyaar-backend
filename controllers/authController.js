@@ -166,6 +166,7 @@ export const loginUser = async (req, res) => {
         age: user.age,
         dateOfBirth: user.dateOfBirth,
         classLevel: user.classLevel,
+        school: user.school,
         board: user.board,
         subject: user.subject,
         chapter: user.chapter,
@@ -187,7 +188,7 @@ export const loginUser = async (req, res) => {
 // @access  Public (for simplicity) - ideally protect with auth middleware
 export const getUser = async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId).select('username name email phone age dateOfBirth classLevel board subject chapter onboardingCompleted boardId classId subjectId chapterId');
+    const user = await User.findById(req.params.userId).select('username name email phone age dateOfBirth classLevel school board subject chapter onboardingCompleted boardId classId subjectId chapterId');
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -200,6 +201,7 @@ export const getUser = async (req, res) => {
       age: user.age,
       dateOfBirth: user.dateOfBirth,
       classLevel: user.classLevel,
+      school: user.school,
       board: user.board,
       subject: user.subject,
       chapter: user.chapter,
@@ -218,7 +220,7 @@ export const getUser = async (req, res) => {
 // @route   PUT /api/auth/onboarding
 // @access  Public (for simplicity) - ideally protect with auth middleware
 export const updateOnboarding = async (req, res) => {
-  const { userId, username = null, board = null, subject = null, chapter = null, name = null, phone = null, classLevel = null, dateOfBirth = null, email = null, classTitle = null } = req.body;
+  const { userId, username = null, board = null, subject = null, chapter = null, name = null, phone = null, classLevel = null, dateOfBirth = null, email = null, classTitle = null, school = null } = req.body;
   
   console.log('🔄 [Backend] updateOnboarding called with:', { userId, subject, board, chapter });
   
@@ -252,6 +254,7 @@ export const updateOnboarding = async (req, res) => {
     if (chapter !== null) user.chapter = chapter;
     if (name !== null) user.name = name;
     if (phone !== null) user.phone = phone;
+    if (school !== null) user.school = school;
     if (classLevel !== null) user.classLevel = classLevel;
     if (dateOfBirth !== null) {
       const parsed = dateOfBirth ? new Date(dateOfBirth) : null;
@@ -324,6 +327,7 @@ export const updateOnboarding = async (req, res) => {
       age: user.age,
       dateOfBirth: user.dateOfBirth,
       classLevel: user.classLevel,
+      school: user.school,
       phone: user.phone,
       board: user.board,
       subject: user.subject,

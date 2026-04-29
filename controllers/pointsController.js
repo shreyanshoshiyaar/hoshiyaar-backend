@@ -190,4 +190,82 @@ export const backfillTotals = async (req, res) => {
   }
 };
 
+// Get leaderboard for a specific school and timeframe
+export const getLeaderboard = async (req, res) => {
+  try {
+    const { school, timeframe = 'total' } = req.query;
+    if (!school) return res.status(400).json({ message: 'school is required' });
+
+    // Fetch all users from that school
+    const users = await User.find({ school }).select('username name school totalPoints pointsLedger');
+    
+    const now = new Date();
+    const start = new Date(now);
+    if (timeframe === 'weekly') {
+      start.setDate(start.getDate() - 7);
+    }
+
+    const leaderboard = users.map(user => {
+      let points = 0;
+      if (timeframe === 'weekly') {
+        // Aggregate points from ledger for the last 7 days
+        const ledger = user.pointsLedger instanceof Map 
+          ? Array.from(user.pointsLedger.values()) 
+          : Object.values(user.pointsLedger || {});
+        
+        points = ledger.reduce((acc, entry) => {
+          const at = entry.attemptedAt ? new Date(entry.attemptedAt) : null;
+          if (at && at >= start) {
+            return acc + (Number(entry.awarded) || 0);
+          }
+          return acc;
+        }, 0);
+      } else {
+        points = Number(user.totalPoints || 0);
+      }
+
+      return {
+        username: user.username,
+        name: user.name || user.username,
+        school: user.school,
+        totalPoints: Math.max(0, points)
+      };
+    });
+
+    // Sort by points descending
+    leaderboard.sort((a, b) => b.totalPoints - a.totalPoints);
+
+    return res.json({
+      school,
+      timeframe,
+      leaderboard: leaderboard.slice(0, 50) // Top 50
+    });
+  } catch (err) {
+    console.error('[points] leaderboard error', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Get unique school names for autocomplete
+export const getSchools = async (req, res) => {
+  try {
+    const { q = '' } = req.query;
+    
+    // Find unique schools
+    // We can use distinct, but if we want to filter by query 'q', we might need a regex
+    let query = { school: { $ne: null, $exists: true } };
+    if (q) {
+      query.school = { $regex: q, $options: 'i' };
+    }
+
+    const schools = await User.distinct('school', query);
+    
+    return res.json(schools.filter(Boolean));
+  } catch (err) {
+    console.error('[points] schools error', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+
 

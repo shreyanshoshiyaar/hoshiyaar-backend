@@ -1,10 +1,13 @@
 import express from 'express';
-import { awardPoints, getSummary, backfillTotals, getLeaderboard, getSchools } from '../controllers/pointsController.js';
+import { awardPoints, getSummary, backfillTotals, getLeaderboard, getSchools, revertSessionPoints } from '../controllers/pointsController.js';
 
 const router = express.Router();
 
 // Award points for a question attempt (idempotent)
 router.put('/award', awardPoints);
+
+// Revert points earned in a session
+router.post('/revert', revertSessionPoints);
 
 // Get points summary for dashboard
 router.get('/summary', getSummary);

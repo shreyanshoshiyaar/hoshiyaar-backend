@@ -10,7 +10,7 @@ function computeDelta({ existing, type, result }) {
     if (existing) {
       return 0;
     }
-    return result === 'correct' ? 5 : -2;
+    return result === 'correct' ? 3 : -3;
   }
 
   if (isRevision) {
@@ -40,6 +40,20 @@ export const awardPoints = async (req, res) => {
 
     const ledger = user.pointsLedger || new Map();
     const existing = ledger.get(questionId);
+
+    // Rule: You can't get more points if lesson is once completed
+    if (moduleId) {
+      const isCompleted = user.chaptersProgress?.some(cp => 
+        Array.isArray(cp.completedModules) && cp.completedModules.includes(String(moduleId))
+      );
+      if (isCompleted) {
+        return res.json({
+          totalPoints: user.totalPoints || 0,
+          delta: 0,
+          message: 'Module already completed'
+        });
+      }
+    }
 
     const delta = computeDelta({ existing, type, result });
     if (delta !== 0) {
@@ -265,7 +279,40 @@ export const getSchools = async (req, res) => {
     console.error('[points] schools error', err);
     return res.status(500).json({ message: 'Internal server error' });
   }
+};// Revert points earned in a session (e.g. user quit lesson mid-way)
+export const revertSessionPoints = async (req, res) => {
+  try {
+    const { userId, questionIds } = req.body || {};
+    if (!userId || !Array.isArray(questionIds) || questionIds.length === 0) {
+      return res.status(400).json({ message: 'userId and questionIds array are required' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const ledger = user.pointsLedger || new Map();
+    let totalDeduction = 0;
+
+    for (const qid of questionIds) {
+      const entry = ledger.get(qid);
+      if (entry) {
+        totalDeduction += (entry.awarded || 0);
+        ledger.delete(qid);
+      }
+    }
+
+    if (totalDeduction !== 0) {
+      user.totalPoints = Math.max(0, (user.totalPoints || 0) - totalDeduction);
+      user.pointsLedger = ledger;
+      await user.save();
+    }
+
+    return res.json({
+      totalPoints: user.totalPoints || 0,
+      deducted: totalDeduction,
+    });
+  } catch (err) {
+    console.error('[points] revert error', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
 };
-
-
-

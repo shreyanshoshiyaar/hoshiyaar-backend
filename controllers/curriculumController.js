@@ -508,4 +508,23 @@ export const setItemImage = async (req, res) => {
   }
 };
 
+// PUT /api/curriculum/units/:id
+export const updateUnit = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, order, headerBgUrl, timelineBgUrl } = req.body || {};
+    const updateData = {};
+    if (title !== undefined) updateData.title = title;
+    if (order !== undefined) updateData.order = Number(order) || 1;
+    if (headerBgUrl !== undefined) updateData.headerBgUrl = headerBgUrl;
+    if (timelineBgUrl !== undefined) updateData.timelineBgUrl = timelineBgUrl;
+
+    const unit = await Unit.findByIdAndUpdate(id, { $set: updateData }, { new: true });
+    if (!unit) return res.status(404).json({ message: 'Unit not found' });
+    return res.json(unit);
+  } catch (err) {
+    return res.status(500).json({ message: 'Server Error' });
+  }
+};
+
 

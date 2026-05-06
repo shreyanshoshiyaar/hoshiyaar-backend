@@ -5,7 +5,7 @@ const { Schema } = mongoose;
 const CurriculumItemSchema = new Schema({
   moduleId: { type: Schema.Types.ObjectId, ref: 'Module', required: true },
   order: { type: Number, default: 1 },
-  type: { type: String, enum: ['statement', 'multiple-choice', 'rearrange', 'fill-in-the-blank', 'comic'], required: true },
+  type: { type: String, required: true },
   text: String,
   question: String,
   options: [String],

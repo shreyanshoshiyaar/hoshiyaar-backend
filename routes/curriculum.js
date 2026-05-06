@@ -1,5 +1,5 @@
 import express from 'express';
-import { importCurriculum, listBoards, listClasses, listSubjects, listChapters, listUnits, listModules, listItems, setItemImage, backfillSubjects, backfillUnits, seedBasicData } from '../controllers/curriculumController.js';
+import { importCurriculum, listBoards, listClasses, listSubjects, listChapters, listUnits, listModules, listItems, setItemImage, backfillSubjects, backfillUnits, seedBasicData, updateUnit } from '../controllers/curriculumController.js';
 
 const router = express.Router();
 
@@ -9,6 +9,7 @@ router.get('/classes', listClasses);
 router.get('/subjects', listSubjects);
 router.get('/chapters', listChapters);
 router.get('/units', listUnits);
+router.put('/units/:id', updateUnit);
 router.get('/modules', listModules);
 router.get('/items', listItems);
 router.put('/items/:id/image', setItemImage);

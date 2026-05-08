@@ -36,9 +36,11 @@ const app = express();
 const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = [
-      // Production domains
-      'https://www.hoshiyaar.info',
+      // Primary Production Domain
       'https://hoshiyaar.info',
+      'https://www.hoshiyaar.info',
+
+      // Legacy/Alternative Domains
       'https://hoshiyaar-frontend.vercel.app',
       'https://hoshiyaar-frontend-1.onrender.com',
       'http://localhost',        // Required for Capacitor Android (HTTP)

@@ -17,7 +17,7 @@ const generateToken = (id) => {
 // @route   POST /api/auth/register
 // @access  Public
 export const registerUser = async (req, res) => {
-  const { username, name, email = null, age, dateOfBirth, classLevel = null, board = null, classTitle = null, subject = null, chapter = null } = req.body;
+  const { username, name, email = null, phone = null, age, dateOfBirth, classLevel = null, board = null, classTitle = null, subject = null, chapter = null } = req.body;
 
   try {
     // Ensure unique username
@@ -83,6 +83,7 @@ export const registerUser = async (req, res) => {
       classId: classDoc ? classDoc._id : null,
       subjectId: subjectDoc ? subjectDoc._id : null,
       chapterId: chapterDoc ? chapterDoc._id : null,
+      phone: phone || null,
       // Show onboarding after signup until the learner completes selections
       // Mark onboarding complete only if board, subject, and chapter are present
       onboardingCompleted: !!((board || boardDoc) && (subject || subjectDoc) && (chapter || chapterDoc)),
@@ -100,6 +101,7 @@ export const registerUser = async (req, res) => {
         board: user.board,
         subject: user.subject,
         chapter: user.chapter,
+        phone: user.phone,
         onboardingCompleted: user.onboardingCompleted,
         token: generateToken(user._id),
       });

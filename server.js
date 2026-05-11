@@ -46,7 +46,7 @@ const corsOptions = {
       'http://localhost',        // Required for Capacitor Android (HTTP)
       'https://localhost',       // Required for Capacitor Android (HTTPS)
       'capacitor://localhost',  // Required for Capacitor iOS
-      'https://hoshiyaar-backend-production-976e.up.railway.app', // Backend its own domain
+      'https://api.hoshiyaar.info', // Backend its own domain
 
       // Local development
       'http://localhost:5173',

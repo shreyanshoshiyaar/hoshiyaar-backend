@@ -10,6 +10,7 @@ const SubjectSchema = new Schema({
 
 // Unique per board, class, and name
 SubjectSchema.index({ boardId: 1, classId: 1, name: 1 }, { unique: true });
+SubjectSchema.index({ classId: 1 });
 
 export default mongoose.model('Subject', SubjectSchema);
 

@@ -204,55 +204,92 @@ export const backfillTotals = async (req, res) => {
   }
 };
 
-// Get leaderboard for a specific school and timeframe
+// Get leaderboard for a specific school or global (all users)
 export const getLeaderboard = async (req, res) => {
   try {
     const { school, timeframe = 'total' } = req.query;
-    if (!school) return res.status(400).json({ message: 'school is required' });
 
-    // Fetch all users from that school
-    const users = await User.find({ school }).select('username name school totalPoints pointsLedger');
+    // Normalize school filter: ignore 'null' or 'undefined' strings from frontend
+    const isGlobal = !school || school === 'null' || school === 'undefined';
+    const filter = isGlobal ? {} : { school };
     
-    const now = new Date();
-    const start = new Date(now);
-    if (timeframe === 'weekly') {
-      start.setDate(start.getDate() - 7);
-    }
+    let leaderboard = [];
 
-    const leaderboard = users.map(user => {
-      let points = 0;
-      if (timeframe === 'weekly') {
-        // Aggregate points from ledger for the last 7 days
-        const ledger = user.pointsLedger instanceof Map 
-          ? Array.from(user.pointsLedger.values()) 
-          : Object.values(user.pointsLedger || {});
-        
-        points = ledger.reduce((acc, entry) => {
-          const at = entry.attemptedAt ? new Date(entry.attemptedAt) : null;
-          if (at && at >= start) {
-            return acc + (Number(entry.awarded) || 0);
-          }
-          return acc;
-        }, 0);
-      } else {
-        points = Number(user.totalPoints || 0);
-      }
+    if (timeframe === 'total') {
+      // High-performance direct query for total points
+      const users = await User.find(filter)
+        .sort({ totalPoints: -1 })
+        .limit(50)
+        .select('username name school totalPoints')
+        .lean();
 
-      return {
+      leaderboard = users.map(user => ({
         username: user.username,
         name: user.name || user.username,
         school: user.school,
-        totalPoints: Math.max(0, points)
-      };
-    });
+        totalPoints: Math.max(0, Number(user.totalPoints || 0))
+      }));
+    } else {
+      // Weekly logic using aggregation for efficiency
+      const start = new Date();
+      start.setDate(start.getDate() - 7);
 
-    // Sort by points descending
-    leaderboard.sort((a, b) => b.totalPoints - a.totalPoints);
+      const pipeline = [
+        { $match: filter },
+        { 
+          $project: { 
+            username: 1, 
+            name: 1, 
+            school: 1, 
+            // Convert pointsLedger Map (stored as object) to array for processing
+            ledgerArray: { $objectToArray: "$pointsLedger" } 
+          } 
+        },
+        { $unwind: "$ledgerArray" },
+        { $match: { "ledgerArray.v.attemptedAt": { $gte: start } } },
+        { 
+          $group: {
+            _id: "$_id",
+            username: { $first: "$username" },
+            name: { $first: "$name" },
+            school: { $first: "$school" },
+            totalPoints: { $sum: "$ledgerArray.v.awarded" }
+          }
+        },
+        { $sort: { totalPoints: -1 } },
+        { $limit: 50 }
+      ];
+
+      const results = await User.aggregate(pipeline);
+      leaderboard = results.map(r => ({
+        username: r.username,
+        name: r.name || r.username,
+        school: r.school,
+        totalPoints: Math.max(0, Number(r.totalPoints || 0))
+      }));
+
+      // Fallback: If weekly leaderboard is empty (no one earned points), 
+      // still return top 10 users with total points to avoid a blank screen
+      if (leaderboard.length === 0) {
+        const topUsers = await User.find(filter)
+          .sort({ totalPoints: -1 })
+          .limit(10)
+          .select('username name school totalPoints')
+          .lean();
+        
+        leaderboard = topUsers.map(user => ({
+          username: user.username,
+          name: user.name || user.username,
+          school: user.school,
+          totalPoints: 0 // Show 0 for weekly since no one earned any
+        }));
+      }
+    }
 
     return res.json({
-      school,
+      school: isGlobal ? "Global" : school,
       timeframe,
-      leaderboard: leaderboard.slice(0, 50) // Top 50
+      leaderboard
     });
   } catch (err) {
     console.error('[points] leaderboard error', err);
@@ -265,8 +302,6 @@ export const getSchools = async (req, res) => {
   try {
     const { q = '' } = req.query;
     
-    // Find unique schools
-    // We can use distinct, but if we want to filter by query 'q', we might need a regex
     let query = { school: { $ne: null, $exists: true } };
     if (q) {
       query.school = { $regex: q, $options: 'i' };
@@ -279,7 +314,9 @@ export const getSchools = async (req, res) => {
     console.error('[points] schools error', err);
     return res.status(500).json({ message: 'Internal server error' });
   }
-};// Revert points earned in a session (e.g. user quit lesson mid-way)
+};
+
+// Revert points earned in a session (e.g. user quit lesson mid-way)
 export const revertSessionPoints = async (req, res) => {
   try {
     const { userId, questionIds } = req.body || {};

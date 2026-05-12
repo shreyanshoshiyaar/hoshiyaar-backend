@@ -1,6 +1,7 @@
 import express, { json } from 'express';
 import { config } from 'dotenv';
 import cors from 'cors';
+import compression from 'compression';
 import connectDB from './config/db.js';
 import authRoutes from './routes/auth.js';
 import lessonRoutes from './routes/lessonRoutes.js';
@@ -9,6 +10,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import uploadRoutes from './routes/upload.js';
 import reviewRoutes from './routes/review.js';
 import pointsRoutes from './routes/points.js';
+import blogRoutes from './routes/blog.js';
 import Subject from './models/Subject.js';
 import ClassLevel from './models/ClassLevel.js';
 import User from './models/User.js';
@@ -84,6 +86,7 @@ const corsOptions = {
 };
 
 // Middleware
+app.use(compression());
 app.use(cors(corsOptions));
 app.use(json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -125,6 +128,9 @@ app.use('/api/review', reviewRoutes);
 
 // Points routes
 app.use('/api/points', pointsRoutes);
+
+// Blog routes
+app.use('/api/blogs', blogRoutes);
 
 // ============================================
 // ERROR HANDLING

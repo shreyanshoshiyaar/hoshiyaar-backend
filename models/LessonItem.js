@@ -25,6 +25,8 @@ const lessonItemSchema = new Schema({
   order: { type: Number, default: 0 },
 });
 
+lessonItemSchema.index({ module: 1 });
+
 const LessonItem = mongoose.model('LessonItem', lessonItemSchema);
 
 export default LessonItem;

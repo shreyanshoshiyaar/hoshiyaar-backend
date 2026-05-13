@@ -11,6 +11,7 @@ import uploadRoutes from './routes/upload.js';
 import reviewRoutes from './routes/review.js';
 import pointsRoutes from './routes/points.js';
 import blogRoutes from './routes/blog.js';
+import settingsRoutes from './routes/settings.js';
 import Subject from './models/Subject.js';
 import ClassLevel from './models/ClassLevel.js';
 import User from './models/User.js';
@@ -131,6 +132,9 @@ app.use('/api/points', pointsRoutes);
 
 // Blog routes
 app.use('/api/blogs', blogRoutes);
+
+// Settings routes
+app.use('/api/settings', settingsRoutes);
 
 // ============================================
 // ERROR HANDLING

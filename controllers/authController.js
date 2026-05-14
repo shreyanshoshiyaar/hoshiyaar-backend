@@ -7,8 +7,8 @@ import Module from '../models/Module.js';
 import jwt from 'jsonwebtoken';
 
 // Helper function to generate a JWT
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+const generateToken = (id, role) => {
+  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
     expiresIn: '30d',
   });
 };
@@ -103,7 +103,8 @@ export const registerUser = async (req, res) => {
         chapter: user.chapter,
         phone: user.phone,
         onboardingCompleted: user.onboardingCompleted,
-        token: generateToken(user._id),
+        role: user.role,
+        token: generateToken(user._id, user.role),
       });
     } else {
       res.status(400).json({ message: 'Invalid user data' });
@@ -133,7 +134,8 @@ export const registerGuest = async (req, res) => {
         name: user.name,
         isGuest: user.isGuest,
         onboardingCompleted: user.onboardingCompleted,
-        token: generateToken(user._id),
+        role: user.role,
+        token: generateToken(user._id, user.role),
       });
     } else {
       res.status(400).json({ message: 'Invalid guest data' });
@@ -173,7 +175,8 @@ export const loginUser = async (req, res) => {
         subject: user.subject,
         chapter: user.chapter,
         onboardingCompleted: user.onboardingCompleted,
-        token: generateToken(user._id),
+        role: user.role,
+        token: generateToken(user._id, user.role),
       });
     } else {
       // Use a generic error message for security

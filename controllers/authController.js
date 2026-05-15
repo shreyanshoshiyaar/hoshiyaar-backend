@@ -633,3 +633,22 @@ export const getCompletedModules = async (req, res) => {
   }
 };
 
+// @desc    Delete user account
+// @route   DELETE /api/auth/user/:userId
+// @access  Private (should be protected)
+export const deleteUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Delete the user
+    await User.findByIdAndDelete(req.params.userId);
+
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: `Server Error: ${error.message}` });
+  }
+};
+

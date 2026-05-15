@@ -1,6 +1,6 @@
 import express from 'express';
 // Corrected the import to use named imports directly
-import { registerUser, registerGuest, loginUser, updateOnboarding, getUser, getProgress, updateProgress, checkUsername, verifyStorage, getModuleProgress, getCompletedModules } from '../controllers/authController.js';
+import { registerUser, registerGuest, loginUser, updateOnboarding, getUser, getProgress, updateProgress, checkUsername, verifyStorage, getModuleProgress, getCompletedModules, deleteUser } from '../controllers/authController.js';
 
 const router = express.Router();
 
@@ -23,6 +23,9 @@ router.put('/onboarding', updateOnboarding);
 
 // Route to get user data
 router.get('/user/:userId', getUser);
+
+// Route to delete user account
+router.delete('/user/:userId', deleteUser);
 
 // Username availability
 router.get('/check-username', checkUsername);

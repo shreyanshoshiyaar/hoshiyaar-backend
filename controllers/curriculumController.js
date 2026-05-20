@@ -512,12 +512,14 @@ export const setItemImage = async (req, res) => {
 export const updateUnit = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, order, headerBgUrl, timelineBgUrl } = req.body || {};
+    const { title, order, headerBgUrl, timelineBgUrl, desktopHeaderBgUrl, desktopTimelineBgUrl } = req.body || {};
     const updateData = {};
     if (title !== undefined) updateData.title = title;
     if (order !== undefined) updateData.order = Number(order) || 1;
     if (headerBgUrl !== undefined) updateData.headerBgUrl = headerBgUrl;
     if (timelineBgUrl !== undefined) updateData.timelineBgUrl = timelineBgUrl;
+    if (desktopHeaderBgUrl !== undefined) updateData.desktopHeaderBgUrl = desktopHeaderBgUrl;
+    if (desktopTimelineBgUrl !== undefined) updateData.desktopTimelineBgUrl = desktopTimelineBgUrl;
 
     const unit = await Unit.findByIdAndUpdate(id, { $set: updateData }, { new: true });
     if (!unit) return res.status(404).json({ message: 'Unit not found' });

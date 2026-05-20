@@ -167,6 +167,7 @@ export const loginUser = async (req, res) => {
         username: user.username,
         name: user.name,
         email: user.email,
+        phone: user.phone,
         age: user.age,
         dateOfBirth: user.dateOfBirth,
         classLevel: user.classLevel,
@@ -225,9 +226,9 @@ export const getUser = async (req, res) => {
 // @route   PUT /api/auth/onboarding
 // @access  Public (for simplicity) - ideally protect with auth middleware
 export const updateOnboarding = async (req, res) => {
-  const { userId, username = null, board = null, subject = null, chapter = null, name = null, phone = null, classLevel = null, dateOfBirth = null, email = null, classTitle = null, school = null } = req.body;
+  const { userId, dateOfBirth, classTitle } = req.body;
   
-  console.log('🔄 [Backend] updateOnboarding called with:', { userId, subject, board, chapter });
+  console.log('🔄 [Backend] updateOnboarding called with:', { userId, body: req.body });
   
   if (!userId) {
     return res.status(400).json({ message: 'userId is required' });
@@ -240,9 +241,10 @@ export const updateOnboarding = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
     console.log('✅ [Backend] User found:', { id: user._id, username: user.username, currentSubject: user.subject });
+    
     // Username update with uniqueness check
-    if (username !== null && String(username).trim()) {
-      const normalized = String(username).trim();
+    if (req.body.username !== undefined && req.body.username !== null && String(req.body.username).trim()) {
+      const normalized = String(req.body.username).trim();
       if (normalized !== user.username) {
         const exists = await User.exists({ username: normalized, _id: { $ne: user._id } });
         if (exists) {
@@ -251,24 +253,26 @@ export const updateOnboarding = async (req, res) => {
         user.username = normalized;
       }
     }
-    if (board !== null) user.board = board;
-    if (subject !== null) {
-      console.log('🔄 [Backend] Updating subject from', user.subject, 'to', subject);
-      user.subject = subject;
+    
+    if (req.body.board !== undefined) user.board = req.body.board;
+    if (req.body.subject !== undefined) {
+      console.log('🔄 [Backend] Updating subject from', user.subject, 'to', req.body.subject);
+      user.subject = req.body.subject;
     }
-    if (chapter !== null) user.chapter = chapter;
-    if (name !== null) user.name = name;
-    if (phone !== null) user.phone = phone;
-    if (school !== null) user.school = school;
-    if (classLevel !== null) user.classLevel = classLevel;
-    if (dateOfBirth !== null) {
+    if (req.body.chapter !== undefined) user.chapter = req.body.chapter;
+    if (req.body.name !== undefined) user.name = req.body.name;
+    if (req.body.phone !== undefined) user.phone = req.body.phone;
+    if (req.body.school !== undefined) user.school = req.body.school;
+    if (req.body.classLevel !== undefined) user.classLevel = req.body.classLevel;
+    if (req.body.email !== undefined) user.email = req.body.email;
+    
+    if (dateOfBirth !== undefined && dateOfBirth !== null) {
       const parsed = dateOfBirth ? new Date(dateOfBirth) : null;
       if (parsed && isNaN(parsed.getTime())) {
         return res.status(400).json({ message: 'Invalid dateOfBirth format. Use YYYY-MM-DD.' });
       }
       user.dateOfBirth = parsed;
     }
-    if (email !== null) user.email = email;
     // Resolve and persist normalized IDs based on current string selections
     try {
       let boardDoc = null, classDoc = null, subjectDoc = null, chapterDoc = null;

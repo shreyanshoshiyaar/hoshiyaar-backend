@@ -26,6 +26,13 @@ router.get('/:key', async (req, res) => {
         description: "URL for the 'Today's Mission' video on the homescreen"
       });
     }
+    if (!setting && key === 'mission_video_desktop_url') {
+      setting = await SystemSettings.create({
+        key: 'mission_video_desktop_url',
+        value: 'https://www.youtube.com/embed/uHDSRZK74Dk',
+        description: "URL for the 'Today's Mission' video on the desktop homescreen"
+      });
+    }
     if (!setting && key === 'homepage_slides') {
       setting = await SystemSettings.create({
         key: 'homepage_slides',

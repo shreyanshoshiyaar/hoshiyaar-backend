@@ -11,6 +11,8 @@ const CurriculumItemSchema = new Schema({
   options: [String],
   answer: String,
   words: [String],
+  keywords: [String],
+  modelAnswers: [String],
   imageUrl: { type: String },
   imagePublicId: { type: String },
   images: { type: [String], default: [] },

@@ -193,6 +193,7 @@ export const importCurriculum = async (req, res) => {
         let isRearrange = false;
         let isStatement = false;
         let isComic = false;
+        let isDescriptive = false;
 
         if (hasExplicitType) {
           // Explicit type takes precedence
@@ -201,12 +202,14 @@ export const importCurriculum = async (req, res) => {
           isRearrange = rawType === 'rearrange';
           isComic = rawType === 'comic';
           isStatement = rawType === 'statement' || rawType === 'concept' || rawType === 'text';
+          isDescriptive = rawType === 'descriptive';
         } else {
           // Infer from data structure only if no explicit type
           isMCQ = Array.isArray(c.options) && c.question && !Array.isArray(c.words);
           isFIB = c.question && !Array.isArray(c.options) && typeof c.answer !== 'undefined' && !Array.isArray(c.words);
           isRearrange = Array.isArray(c.words);
-          isStatement = !isMCQ && !isFIB && !isRearrange && (c.text || c.content);
+          isDescriptive = Array.isArray(c.keywords) || Array.isArray(c.modelAnswers);
+          isStatement = !isMCQ && !isFIB && !isRearrange && !isDescriptive && (c.text || c.content);
         }
 
         const updateData = { ...base };
@@ -221,6 +224,8 @@ export const importCurriculum = async (req, res) => {
           Object.assign(updateData, { type: 'multiple-choice', question: c.question || '', options: (c.options || []).filter(Boolean), answer: c.answer });
         } else if (isFIB) {
           Object.assign(updateData, { type: 'fill-in-the-blank', question: c.question || '', answer: c.answer });
+        } else if (isDescriptive) {
+          Object.assign(updateData, { type: 'descriptive', question: c.question || '', keywords: c.keywords || [], modelAnswers: c.modelAnswers || [] });
         } else if (isStatement) {
           Object.assign(updateData, { type: 'statement', text: c.text || c.content || '' });
         } else {

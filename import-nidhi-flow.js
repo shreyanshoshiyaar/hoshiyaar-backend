@@ -189,6 +189,13 @@ async function importNidhiFlow() {
       if (conceptText) {
         itemDoc.text = conceptText.trim();
       }
+      if (type === 'descriptive') {
+        if (answerText) {
+          itemDoc.modelAnswers = [answerText.trim()];
+        }
+        // Basic keywords generation for descriptive if empty
+        itemDoc.keywords = [];
+      }
     }
 
     // Gather Image/Video URLs starting with http or https

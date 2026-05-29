@@ -13,6 +13,7 @@ import pointsRoutes from './routes/points.js';
 import blogRoutes from './routes/blog.js';
 import settingsRoutes from './routes/settings.js';
 import adminRoutes from './routes/adminRoutes.js';
+import whatsappRoutes from './routes/whatsappRoutes.js';
 import Subject from './models/Subject.js';
 import ClassLevel from './models/ClassLevel.js';
 import User from './models/User.js';
@@ -137,6 +138,9 @@ app.use('/api/blogs', blogRoutes);
 // Settings routes
 app.use('/api/settings', settingsRoutes);
 app.use('/api/admin', adminRoutes);
+
+// WhatsApp Webhook routes
+app.use('/api/whatsapp', whatsappRoutes);
 
 // ============================================
 // ERROR HANDLING

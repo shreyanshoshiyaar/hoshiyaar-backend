@@ -1,6 +1,6 @@
 import express from 'express';
 // Corrected the import to use named imports directly
-import { registerUser, registerGuest, loginUser, updateOnboarding, getUser, getProgress, updateProgress, checkUsername, verifyStorage, getModuleProgress, getCompletedModules, deleteUser } from '../controllers/authController.js';
+import { registerUser, registerGuest, loginUser, updateOnboarding, getUser, getProgress, updateProgress, checkUsername, verifyStorage, getModuleProgress, getCompletedModules, deleteUser, sendOtp, verifyOtp } from '../controllers/authController.js';
 
 const router = express.Router();
 
@@ -8,6 +8,12 @@ const router = express.Router();
 router.get('/', (req, res) => {
   res.json({ status: 'Auth API is running' });
 });
+
+// Route for WhatsApp OTP sending
+router.post('/send-otp', sendOtp);
+
+// Route for WhatsApp OTP verification
+router.post('/verify-otp', verifyOtp);
 
 // Route for user registration
 router.post('/register', registerUser);

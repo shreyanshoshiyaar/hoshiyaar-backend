@@ -4,6 +4,7 @@ import ClassLevel from '../models/ClassLevel.js';
 import Subject from '../models/Subject.js';
 import Chapter from '../models/Chapter.js';
 import Module from '../models/Module.js';
+import Otp from '../models/Otp.js';
 import jwt from 'jsonwebtoken';
 
 // Helper function to generate a JWT
@@ -11,6 +12,130 @@ const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET, {
     expiresIn: '30d',
   });
+};
+
+// @desc    Send OTP via WhatsApp
+// @route   POST /api/auth/send-otp
+// @access  Public
+export const sendOtp = async (req, res) => {
+  const { phone } = req.body;
+
+  if (!phone) {
+    return res.status(400).json({ message: 'Phone number is required' });
+  }
+
+  try {
+    // Generate a 6-digit OTP
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Save/Update OTP in DB
+    await Otp.findOneAndUpdate(
+      { phone },
+      { phone, otp: otpCode, createdAt: new Date() },
+      { upsert: true, new: true }
+    );
+
+    // Call Meta Graph API to send WhatsApp Template
+    const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const WHATSAPP_TOKEN = process.env.WHATSAPP_PERMANENT_TOKEN;
+
+    if (!WHATSAPP_PHONE_NUMBER_ID || !WHATSAPP_TOKEN) {
+      console.warn('WhatsApp API credentials not configured in .env');
+      return res.status(500).json({ message: 'WhatsApp API not configured on server' });
+    }
+
+    // Ensure phone has country code (assuming India +91 if missing)
+    let formattedPhone = phone;
+    if (formattedPhone.length === 10) {
+      formattedPhone = `91${formattedPhone}`;
+    }
+
+    const payload = {
+      messaging_product: 'whatsapp',
+      to: formattedPhone,
+      type: 'template',
+      template: {
+        name: 'login_otp',
+        language: {
+          code: 'en_US'
+        },
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              {
+                type: 'text',
+                text: otpCode
+              }
+            ]
+          },
+          {
+            type: 'button',
+            sub_type: 'url',
+            index: '0',
+            parameters: [
+              {
+                type: 'text',
+                text: otpCode
+              }
+            ]
+          }
+        ]
+      }
+    };
+
+    const response = await fetch(`https://graph.facebook.com/v19.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('Meta API Error:', data);
+      return res.status(400).json({ message: 'Failed to send WhatsApp message', error: data.error?.message });
+    }
+
+    res.status(200).json({ message: 'OTP sent successfully via WhatsApp' });
+  } catch (error) {
+    console.error('Send OTP error:', error);
+    res.status(500).json({ message: 'Server error while sending OTP' });
+  }
+};
+
+// @desc    Verify OTP
+// @route   POST /api/auth/verify-otp
+// @access  Public
+export const verifyOtp = async (req, res) => {
+  const { phone, otp } = req.body;
+
+  if (!phone || !otp) {
+    return res.status(400).json({ message: 'Phone and OTP are required' });
+  }
+
+  try {
+    const otpRecord = await Otp.findOne({ phone });
+
+    if (!otpRecord) {
+      return res.status(400).json({ message: 'OTP expired or not requested' });
+    }
+
+    if (otpRecord.otp !== otp) {
+      return res.status(400).json({ message: 'Invalid OTP' });
+    }
+
+    // OTP is valid - delete it so it can't be reused
+    await Otp.deleteOne({ _id: otpRecord._id });
+
+    res.status(200).json({ message: 'OTP verified successfully' });
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    res.status(500).json({ message: 'Server error while verifying OTP' });
+  }
 };
 
 // @desc    Register a new user

@@ -72,8 +72,7 @@ async function run() {
   console.log("✅ Connected to MongoDB.");
 
   const files = [
-    'D:\\Measurements and Motions - Unit 1 (1).csv',
-    'D:\\Measurements and Motions - Unit 2 (1).csv'
+    'D:\\Exploring  Substances_ Acidic,  Basic, and Neutral - All.csv'
   ];
 
   const existingFiles = files.filter(f => fs.existsSync(f));
@@ -84,16 +83,25 @@ async function run() {
 
   console.log(`\n📦 Found ${existingFiles.length} CSV files to import:\n` + existingFiles.join('\n') + '\n');
 
-  let targetChapter = await Chapter.findOne({ title: /Measurement and motion/i });
+  let targetChapter = await Chapter.findOne({ title: /Exploring Substances/i });
   if (!targetChapter) {
-      console.log("⚠️ Could not find an existing 'Measurement and motion' chapter. Trying to create it in Eduvate.");
+      console.log("⚠️ Could not find an existing 'Exploring Substances' chapter. Trying to create it in Eduvate.");
       let board = await Board.findOne({ name: /Eduvate/i });
       if (!board) board = await Board.findOne({ name: 'CBSE' }); 
       
-      const cls = await ClassLevel.findOne({ boardId: board._id, name: '6' });
-      const subject = await Subject.findOne({ boardId: board._id, classId: cls._id, name: 'Science' });
+      let cls = await ClassLevel.findOne({ boardId: board._id, name: '7' });
+      if (!cls) {
+          console.log("⚠️ Class 7 not found. Creating it...");
+          cls = await ClassLevel.create({ boardId: board._id, name: '7', description: 'Class 7' });
+      }
+
+      let subject = await Subject.findOne({ boardId: board._id, classId: cls._id, name: 'Science' });
+      if (!subject) {
+          console.log("⚠️ Science subject not found for Class 7. Creating it...");
+          subject = await Subject.create({ boardId: board._id, classId: cls._id, name: 'Science', description: 'Science for Class 7' });
+      }
       
-      targetChapter = await Chapter.create({ subjectId: subject._id, title: 'Chapter 1: Measurement and motion', order: 1 });
+      targetChapter = await Chapter.create({ subjectId: subject._id, title: 'Chapter 15: Exploring Substances: Acidic, Basic, and Neutral', order: 15 });
   } else {
       console.log(`✅ Found Target Chapter: ${targetChapter.title}`);
   }
@@ -107,7 +115,7 @@ async function run() {
       await Module.deleteMany({ unitId: u._id });
   }
   await Unit.deleteMany({ chapterId: targetChapter._id });
-  console.log("🧹 Cleared old Measurement modules for a fresh ordered upload.");
+  console.log("🧹 Cleared old Exploring Substances modules for a fresh ordered upload.");
 
   for (const filePath of existingFiles) {
     console.log(`\n⏳ Processing ${filePath}...`);
@@ -119,8 +127,8 @@ async function run() {
     
     const headers = rows[0].map(h => h.trim().toLowerCase());
     
-    const idxUnit = headers.findIndex(h => h.includes('unit_title'));
-    const idxLesson = headers.findIndex(h => h.includes('lesson_title'));
+    const idxUnit = headers.findIndex(h => h.includes('unit'));
+    const idxLesson = headers.findIndex(h => h.includes('lesson'));
     const idxType = headers.findIndex(h => h.includes('type'));
     const idxConcept = headers.findIndex(h => h.includes('concept/statement'));
     const idxQuestion = headers.findIndex(h => h.includes('question'));
@@ -264,7 +272,7 @@ async function run() {
     console.log(`✅ Finished uploading ${filePath} (Created ${processedCount} items)`);
   }
 
-  console.log("\n🎉 All CSVs successfully uploaded directly to the 'Measurement and motion' chapter!");
+  console.log("\n🎉 All CSVs successfully uploaded directly to the 'Exploring Substances' chapter!");
   process.exit(0);
 }
 

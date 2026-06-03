@@ -40,6 +40,7 @@ function parseFullCsv(text) {
             } else if (char === '\n' || char === '\r') {
                 // End of row
                 currentRow.push(curVal.trim());
+                // Only push if row has data
                 if (currentRow.some(c => c.length > 0)) {
                     rows.push(currentRow);
                 }
@@ -54,6 +55,7 @@ function parseFullCsv(text) {
             }
         }
     }
+    // Push the very last value/row
     if (curVal.length > 0 || currentRow.length > 0) {
         currentRow.push(curVal.trim());
         if (currentRow.some(c => c.length > 0)) {
@@ -70,25 +72,35 @@ async function run() {
   console.log("✅ Connected to MongoDB.");
 
   const files = [
-    'D:\\Mindful eating - A path to a healthy body - CBSE.csv'
+    'D:\\Mindful eating - A path to a healthy body - Mindful eating - A path to a healthy body CBSE.csv'
   ];
 
   const existingFiles = files.filter(f => fs.existsSync(f));
   if (existingFiles.length === 0) {
-      console.log("❌ Could not find the CSV file on D drive! Please check the exact name.");
+      console.log("❌ Could not find the CSV files on D drive! Please check the exact names.");
       process.exit(1);
   }
 
   console.log(`\n📦 Found ${existingFiles.length} CSV files to import:\n` + existingFiles.join('\n') + '\n');
 
   let targetChapter = await Chapter.findOne({ title: /Mindful eating/i });
-  
   if (!targetChapter) {
-      console.log("⚠️ Could not find an existing 'Mindful eating' chapter. Creating it in CBSE -> Class 6 -> Science.");
+      console.log("⚠️ Could not find an existing 'Mindful eating' chapter. Trying to create it in CBSE.");
       let board = await Board.findOne({ name: 'CBSE' }); 
-      const cls = await ClassLevel.findOne({ boardId: board._id, name: '6' });
-      const subject = await Subject.findOne({ boardId: board._id, classId: cls._id, name: 'Science' });
-      targetChapter = await Chapter.create({ subjectId: subject._id, title: 'Chapter 3: Mindful eating - A Path to a Healthy Body', order: 3 });
+      
+      let cls = await ClassLevel.findOne({ boardId: board._id, name: '6' });
+      if (!cls) {
+          console.log("⚠️ Class 6 not found. Creating it...");
+          cls = await ClassLevel.create({ boardId: board._id, name: '6', description: 'Class 6' });
+      }
+
+      let subject = await Subject.findOne({ boardId: board._id, classId: cls._id, name: 'Science' });
+      if (!subject) {
+          console.log("⚠️ Science subject not found for Class 6. Creating it...");
+          subject = await Subject.create({ boardId: board._id, classId: cls._id, name: 'Science', description: 'Science for Class 6' });
+      }
+      
+      targetChapter = await Chapter.create({ subjectId: subject._id, title: 'Chapter 3: Mindful eating - A path to a healthy body', order: 3 });
   } else {
       console.log(`✅ Found Target Chapter: ${targetChapter.title}`);
   }
@@ -108,22 +120,28 @@ async function run() {
     console.log(`\n⏳ Processing ${filePath}...`);
     const content = fs.readFileSync(filePath, 'utf-8');
     
+    // Parse the entire file safely supporting newlines inside quotes!
     const rows = parseFullCsv(content);
     if (rows.length < 2) continue;
     
     const headers = rows[0].map(h => h.trim().toLowerCase());
     
-    // Custom mapping for this specific weird CSV structure
+    // Find the first column containing 'lesson' for title, and use a fallback for 'type'
+    // in case type is also incorrectly labeled 'lesson title'
     const lessonTitleIndices = [];
-    headers.forEach((h, i) => { if (h.includes('lesson title')) lessonTitleIndices.push(i); });
+    headers.forEach((h, i) => { if (h.includes('lesson')) lessonTitleIndices.push(i); });
     
-    const idxUnit = headers.findIndex(h => h.includes('unit title'));
-    const idxLesson = lessonTitleIndices[0] ?? -1; 
-    const idxType = lessonTitleIndices[1] ?? -1; // Type is the second 'Lesson Title' column
-    const idxConcept = headers.findIndex(h => h === 'concept' || h.includes('concept'));
-    const idxQuestion = headers.findIndex(h => h === 'questions' || h.includes('question'));
-    const idxOptions = headers.findIndex(h => h === 'options');
-    const idxAnswer = headers.findIndex(h => h === 'answer');
+    const idxUnit = headers.findIndex(h => h.includes('unit'));
+    const idxLesson = lessonTitleIndices[0] ?? -1;
+    let idxType = headers.findIndex(h => h.includes('type'));
+    if (idxType === -1 && lessonTitleIndices.length > 1) {
+       idxType = lessonTitleIndices[1];
+    }
+    
+    const idxConcept = headers.findIndex(h => h.includes('concept') || h === 'statement');
+    const idxQuestion = headers.findIndex(h => h.includes('question'));
+    const idxOptions = headers.findIndex(h => h.includes('options'));
+    const idxAnswer = headers.findIndex(h => h.includes('answer'));
     
     const imgIndices = [];
     headers.forEach((h, i) => {
@@ -262,7 +280,7 @@ async function run() {
     console.log(`✅ Finished uploading ${filePath} (Created ${processedCount} items)`);
   }
 
-  console.log("\n🎉 All CSVs successfully uploaded directly to the 'Mindful eating' chapter in CBSE!");
+  console.log("\n🎉 All CSVs successfully uploaded directly to the 'Mindful eating' chapter!");
   process.exit(0);
 }
 

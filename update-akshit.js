@@ -17,9 +17,6 @@ const updateAccount = async () => {
     const newEmail = 'cg.akshitravula2025@gmail.com';
     const defaultPassword = '999999';
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(defaultPassword, salt);
-
     console.log(`Looking for user: ${username}...`);
     
     const user = await User.findOne({ username });
@@ -31,7 +28,7 @@ const updateAccount = async () => {
 
     user.phone = newPhone;
     user.email = newEmail;
-    user.password = hashedPassword; // Assigning a real password so you can log in!
+    user.password = defaultPassword; // The pre-save hook in User.js will hash it automatically!
 
     await user.save();
 

@@ -50,8 +50,8 @@ async function run() {
   console.log("✅ Connected to MongoDB.");
 
   const files = [
-    'D:\\Q&A Biodiversity - Unit 1 (2).csv',
-    'D:\\Q&A Biodiversity - Unit 2.csv'
+    'D:\\Q&A Biodiversity - Unit 1 (3).csv',
+    'D:\\Q&A Biodiversity - Unit 2 (1).csv'
   ];
 
   // Specific cleanup to reset order for the newly uploaded CSVs without touching other chapters

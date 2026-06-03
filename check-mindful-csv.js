@@ -1,5 +1,5 @@
 import fs from 'fs';
-const file = 'D:\\Temperature - Unit 1 v2.xlsx - Unit 1_ Temperature & thermometer.csv';
+const file = 'D:\\Mindful eating - A path to a healthy body - CBSE.csv';
 const content = fs.readFileSync(file, 'utf-8');
 const lines = content.split(/\r?\n/).slice(0, 3);
 console.log("Headers:");

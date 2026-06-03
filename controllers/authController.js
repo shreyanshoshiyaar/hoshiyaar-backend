@@ -128,7 +128,7 @@ export const verifyOtp = async (req, res) => {
 // @route   POST /api/auth/register
 // @access  Public
 export const registerUser = async (req, res) => {
-  const { username, name, email = null, phone = null, age, dateOfBirth, classLevel = null, board = null, classTitle = null, subject = null, chapter = null } = req.body;
+  const { username, name, email = null, phone = null, password = null, age, dateOfBirth, classLevel = null, board = null, classTitle = null, subject = null, chapter = null } = req.body;
 
   try {
     // Ensure unique username
@@ -195,6 +195,7 @@ export const registerUser = async (req, res) => {
       subjectId: subjectDoc ? subjectDoc._id : null,
       chapterId: chapterDoc ? chapterDoc._id : null,
       phone: phone || null,
+      password: password || null,
       // Show onboarding after signup until the learner completes selections
       // Mark onboarding complete only if board, subject, and chapter are present
       onboardingCompleted: !!((board || boardDoc) && (subject || subjectDoc) && (chapter || chapterDoc)),
@@ -260,19 +261,19 @@ export const registerGuest = async (req, res) => {
 // @route   POST /api/auth/login
 // @access  Public
 export const loginUser = async (req, res) => {
-  const { username, dateOfBirth } = req.body;
+  const { phone, password } = req.body;
 
   // Basic validation to ensure inputs exist
-  if (!username || !dateOfBirth) {
-    return res.status(400).json({ message: 'Please provide a username and date of birth' });
+  if (!phone || !password) {
+    return res.status(400).json({ message: 'Please provide a phone number and password' });
   }
 
   try {
-    // Find user by username
-    const user = await User.findOne({ username });
+    // Find user by phone
+    const user = await User.findOne({ phone });
 
-    // Check if user exists and then compare the date of birth
-    if (user && (await user.matchDateOfBirth(dateOfBirth))) {
+    // Check if user exists and then compare the password
+    if (user && (await user.matchPassword(password))) {
       res.json({
         _id: user._id,
         username: user.username,

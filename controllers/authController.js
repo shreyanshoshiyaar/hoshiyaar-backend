@@ -114,8 +114,9 @@ export const verifyOtp = async (req, res) => {
       return res.status(400).json({ message: 'Invalid OTP' });
     }
 
-    // OTP is valid - delete it so it can't be reused
-    await Otp.deleteOne({ _id: otpRecord._id });
+    // We no longer delete the OTP here because multi-step forms (like reset password)
+    // need to verify the OTP again on the final step. It will be deleted by the final endpoint
+    // or expire automatically after 5 minutes.
 
     res.status(200).json({ message: 'OTP verified successfully' });
   } catch (error) {

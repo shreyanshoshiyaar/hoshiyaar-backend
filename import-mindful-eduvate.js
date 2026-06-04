@@ -38,15 +38,12 @@ function parseFullCsv(text) {
                 currentRow.push(curVal.trim());
                 curVal = '';
             } else if (char === '\n' || char === '\r') {
-                // End of row
                 currentRow.push(curVal.trim());
-                // Only push if row has data
                 if (currentRow.some(c => c.length > 0)) {
                     rows.push(currentRow);
                 }
                 currentRow = [];
                 curVal = '';
-                // Handle \r\n
                 if (char === '\r' && i + 1 < text.length && text[i + 1] === '\n') {
                     i++;
                 }
@@ -55,7 +52,6 @@ function parseFullCsv(text) {
             }
         }
     }
-    // Push the very last value/row
     if (curVal.length > 0 || currentRow.length > 0) {
         currentRow.push(curVal.trim());
         if (currentRow.some(c => c.length > 0)) {
@@ -72,7 +68,7 @@ async function run() {
   console.log("✅ Connected to MongoDB.");
 
   const files = [
-    'D:\\Electricity - all.csv'
+    'D:\\Mindful eating - A path to a healthy body - Mindful eating - A path to a healthy body- eduvate.csv'
   ];
 
   const existingFiles = files.filter(f => fs.existsSync(f));
@@ -83,26 +79,30 @@ async function run() {
 
   console.log(`\n📦 Found ${existingFiles.length} CSV files to import:\n` + existingFiles.join('\n') + '\n');
 
-  let targetChapter = await Chapter.findOne({ title: /Electricity/i });
-  if (!targetChapter) {
-      console.log("⚠️ Could not find an existing 'Electricity' chapter. Trying to create it in CBSE.");
-      let board = await Board.findOne({ name: 'CBSE' }); 
-      
-      let cls = await ClassLevel.findOne({ boardId: board._id, name: '7' });
-      if (!cls) {
-          console.log("⚠️ Class 7 not found. Creating it...");
-          cls = await ClassLevel.create({ boardId: board._id, name: '7', description: 'Class 7' });
-      }
+  let board = await Board.findOne({ name: /Eduvate/i });
+  if (!board) board = await Board.findOne({ name: 'CBSE' }); 
+  
+  let cls = await ClassLevel.findOne({ boardId: board._id, name: '6' });
+  if (!cls) {
+      console.log("⚠️ Class 6 not found. Creating it...");
+      cls = await ClassLevel.create({ boardId: board._id, name: '6', description: 'Class 6' });
+  }
 
-      let subject = await Subject.findOne({ boardId: board._id, classId: cls._id, name: 'Science' });
-      if (!subject) {
-          console.log("⚠️ Science subject not found for Class 7. Creating it...");
-          subject = await Subject.create({ boardId: board._id, classId: cls._id, name: 'Science', description: 'Science for Class 7' });
-      }
-      
-      targetChapter = await Chapter.create({ subjectId: subject._id, title: 'Chapter 3: Electricity: Circuits and their Components', order: 3 });
+  let subject = await Subject.findOne({ boardId: board._id, classId: cls._id, name: 'Science' });
+  if (!subject) {
+      console.log("⚠️ Science subject not found for Class 6. Creating it...");
+      subject = await Subject.create({ boardId: board._id, classId: cls._id, name: 'Science', description: 'Science for Class 6' });
+  }
+
+  let targetChapter = await Chapter.findOne({ subjectId: subject._id, title: /Components of food|Mindful eating/i });
+  if (!targetChapter) {
+      console.log("⚠️ Could not find an existing chapter in Eduvate. Creating it...");
+      targetChapter = await Chapter.create({ subjectId: subject._id, title: 'Chapter 2: Components of food', order: 2 });
   } else {
-      console.log(`✅ Found Target Chapter: ${targetChapter.title}`);
+      console.log(`✅ Found Target Chapter in Eduvate: ${targetChapter.title}. Updating name to 'Chapter 2: Components of food'...`);
+      targetChapter.title = 'Chapter 2: Components of food';
+      targetChapter.order = 2;
+      await targetChapter.save();
   }
 
   const unitsToClear = await Unit.find({ chapterId: targetChapter._id });
@@ -114,22 +114,28 @@ async function run() {
       await Module.deleteMany({ unitId: u._id });
   }
   await Unit.deleteMany({ chapterId: targetChapter._id });
-  console.log("🧹 Cleared old Electricity modules for a fresh ordered upload.");
+  console.log("🧹 Cleared old Mindful Eating modules for a fresh ordered upload.");
 
   for (const filePath of existingFiles) {
     console.log(`\n⏳ Processing ${filePath}...`);
     const content = fs.readFileSync(filePath, 'utf-8');
     
-    // Parse the entire file safely supporting newlines inside quotes!
     const rows = parseFullCsv(content);
     if (rows.length < 2) continue;
     
     const headers = rows[0].map(h => h.trim().toLowerCase());
     
+    const lessonTitleIndices = [];
+    headers.forEach((h, i) => { if (h.includes('lesson')) lessonTitleIndices.push(i); });
+    
     const idxUnit = headers.findIndex(h => h.includes('unit'));
-    const idxLesson = headers.findIndex(h => h.includes('lesson'));
-    const idxType = headers.findIndex(h => h.includes('type'));
-    const idxConcept = headers.findIndex(h => h.includes('concept/statement'));
+    const idxLesson = lessonTitleIndices[0] ?? -1;
+    let idxType = headers.findIndex(h => h.includes('type'));
+    if (idxType === -1 && lessonTitleIndices.length > 1) {
+       idxType = lessonTitleIndices[1];
+    }
+    
+    const idxConcept = headers.findIndex(h => h.includes('concept') || h === 'statement');
     const idxQuestion = headers.findIndex(h => h.includes('question'));
     const idxOptions = headers.findIndex(h => h.includes('options'));
     const idxAnswer = headers.findIndex(h => h.includes('answer'));
@@ -148,7 +154,7 @@ async function run() {
     for (let i = 1; i < rows.length; i++) {
        const row = rows[i];
        
-       if (!row[idxLesson] || !row[idxType]) continue;
+       if (idxLesson === -1 || idxType === -1 || !row[idxLesson] || !row[idxType]) continue;
 
        const unitTitle = row[idxUnit] || 'Default Unit';
        let moduleTitle = row[idxLesson];
@@ -187,10 +193,10 @@ async function run() {
           type: typeStr
        };
        
-       const conceptText = row[idxConcept] ? row[idxConcept].trim() : '';
-       const questionText = row[idxQuestion] ? row[idxQuestion].trim() : '';
-       const optionsStr = row[idxOptions] ? row[idxOptions].trim() : '';
-       const answerText = row[idxAnswer] ? row[idxAnswer].trim() : '';
+       const conceptText = (idxConcept !== -1 && row[idxConcept]) ? row[idxConcept].trim() : '';
+       const questionText = (idxQuestion !== -1 && row[idxQuestion]) ? row[idxQuestion].trim() : '';
+       const optionsStr = (idxOptions !== -1 && row[idxOptions]) ? row[idxOptions].trim() : '';
+       const answerText = (idxAnswer !== -1 && row[idxAnswer]) ? row[idxAnswer].trim() : '';
        
        if (typeStr === 'descriptive') {
           itemDoc.question = questionText;
@@ -271,7 +277,7 @@ async function run() {
     console.log(`✅ Finished uploading ${filePath} (Created ${processedCount} items)`);
   }
 
-  console.log("\n🎉 All CSVs successfully uploaded directly to the 'Electricity' chapter!");
+  console.log("\n🎉 All CSVs successfully uploaded directly to the 'Mindful eating' chapter in Eduvate!");
   process.exit(0);
 }
 

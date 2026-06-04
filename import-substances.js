@@ -85,9 +85,8 @@ async function run() {
 
   let targetChapter = await Chapter.findOne({ title: /Exploring Substances/i });
   if (!targetChapter) {
-      console.log("⚠️ Could not find an existing 'Exploring Substances' chapter. Trying to create it in Eduvate.");
-      let board = await Board.findOne({ name: /Eduvate/i });
-      if (!board) board = await Board.findOne({ name: 'CBSE' }); 
+      console.log("⚠️ Could not find an existing chapter. Trying to create it in CBSE.");
+      let board = await Board.findOne({ name: 'CBSE' }); 
       
       let cls = await ClassLevel.findOne({ boardId: board._id, name: '7' });
       if (!cls) {

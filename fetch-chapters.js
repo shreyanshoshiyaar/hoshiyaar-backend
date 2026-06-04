@@ -20,7 +20,7 @@ async function run() {
       console.log(`🏫 BOARD: ${board.name}`);
       console.log(`=========================================`);
       
-      const classes = await ClassLevel.find({ boardId: board._id, name: { $in: ['6', '7'] } });
+      const classes = await ClassLevel.find({ boardId: board._id, name: { $in: ['6', '7', '8'] } });
       
       for (const cls of classes) {
           console.log(`\n  📚 Class: ${cls.name}`);

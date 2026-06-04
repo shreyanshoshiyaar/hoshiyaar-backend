@@ -94,7 +94,7 @@ async function run() {
       subject = await Subject.create({ boardId: board._id, classId: cls._id, name: 'Science', description: 'Science for Class 6' });
   }
 
-  let targetChapter = await Chapter.findOne({ subjectId: subject._id, title: /Components of food|Mindful eating/i });
+  let targetChapter = await Chapter.findOne({ subjectId: subject._id, title: /Mindful eating|Components of food/i });
   if (!targetChapter) {
       console.log("⚠️ Could not find an existing chapter in Eduvate. Creating it...");
       targetChapter = await Chapter.create({ subjectId: subject._id, title: 'Chapter 2: Components of food', order: 2 });
@@ -136,7 +136,7 @@ async function run() {
     }
     
     const idxConcept = headers.findIndex(h => h.includes('concept') || h === 'statement');
-    const idxQuestion = headers.findIndex(h => h.includes('question'));
+    const idxQuestion = headers.findIndex(h => h.includes('question') && !h.includes('type'));
     const idxOptions = headers.findIndex(h => h.includes('options'));
     const idxAnswer = headers.findIndex(h => h.includes('answer'));
     

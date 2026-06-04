@@ -136,7 +136,7 @@ async function run() {
     }
     
     const idxConcept = headers.findIndex(h => h.includes('concept') || h === 'statement');
-    const idxQuestion = headers.findIndex(h => h.includes('question'));
+    const idxQuestion = headers.findIndex(h => h.includes('question') && !h.includes('type'));
     const idxOptions = headers.findIndex(h => h.includes('options'));
     const idxAnswer = headers.findIndex(h => h.includes('answer'));
     

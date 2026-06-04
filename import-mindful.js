@@ -83,7 +83,7 @@ async function run() {
 
   console.log(`\n📦 Found ${existingFiles.length} CSV files to import:\n` + existingFiles.join('\n') + '\n');
 
-  let targetChapter = await Chapter.findOne({ title: /Mindful eating/i });
+  let targetChapter = await Chapter.findOne({ title: /(Mindful eating|Health.*Ultimate Treasure)/i });
   if (!targetChapter) {
       console.log("⚠️ Could not find an existing 'Mindful eating' chapter. Trying to create it in CBSE.");
       let board = await Board.findOne({ name: 'CBSE' }); 
@@ -102,7 +102,9 @@ async function run() {
       
       targetChapter = await Chapter.create({ subjectId: subject._id, title: 'Chapter 3: Mindful eating - A path to a healthy body', order: 3 });
   } else {
-      console.log(`✅ Found Target Chapter: ${targetChapter.title}`);
+      console.log(`✅ Found Target Chapter: ${targetChapter.title}. Renaming to correct title...`);
+      targetChapter.title = 'Chapter 3: Mindful eating - A path to a healthy body';
+      await targetChapter.save();
   }
 
   const unitsToClear = await Unit.find({ chapterId: targetChapter._id });
@@ -139,7 +141,7 @@ async function run() {
     }
     
     const idxConcept = headers.findIndex(h => h.includes('concept') || h === 'statement');
-    const idxQuestion = headers.findIndex(h => h.includes('question'));
+    const idxQuestion = headers.findIndex(h => h.includes('question') && !h.includes('type'));
     const idxOptions = headers.findIndex(h => h.includes('options'));
     const idxAnswer = headers.findIndex(h => h.includes('answer'));
     

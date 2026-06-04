@@ -56,7 +56,20 @@ export const sendOtp = async (req, res) => {
       destination: formattedPhone,
       userName: "Learner",
       templateParams: [String(otpCode)], // First variable in body is the OTP
-      source: "login-page"
+      source: "login-page",
+      buttons: [
+        {
+          type: "button",
+          sub_type: "url",
+          index: 0,
+          parameters: [
+            {
+              type: "text",
+              text: String(otpCode)
+            }
+          ]
+        }
+      ]
     };
 
     const response = await fetch('https://backend.aisensy.com/campaign/t1/api/v2', {

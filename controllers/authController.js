@@ -265,17 +265,17 @@ export const registerGuest = async (req, res) => {
 export const loginUser = async (req, res) => {
   const { phone, password } = req.body;
 
-  // Basic validation to ensure inputs exist
   if (!phone || !password) {
     return res.status(400).json({ message: 'Please provide a phone number and password' });
   }
 
   try {
-    // Find user by phone
-    const user = await User.findOne({ phone });
+    // Find user by phone, trimming any extra spaces from input
+    const cleanPhone = String(phone).trim();
+    const user = await User.findOne({ phone: cleanPhone });
 
     // Check if user exists and then compare the password
-    if (user && (await user.matchPassword(password))) {
+    if (user && (await user.matchPassword(String(password).trim()))) {
       res.json({
         _id: user._id,
         username: user.username,

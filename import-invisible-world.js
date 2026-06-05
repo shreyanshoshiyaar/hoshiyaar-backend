@@ -8,6 +8,7 @@ import Chapter from './models/Chapter.js';
 import Unit from './models/Unit.js';
 import Module from './models/Module.js';
 import CurriculumItem from './models/CurriculumItem.js';
+import DefaultRevisionQuestion from './models/DefaultRevisionQuestion.js';
 
 dotenv.config();
 
@@ -63,6 +64,7 @@ async function run() {
           const modsToClear = await Module.find({ unitId: u._id });
           for (const m of modsToClear) {
               await CurriculumItem.deleteMany({ moduleId: m._id });
+              await DefaultRevisionQuestion.deleteMany({ moduleId: m._id });
           }
           await Module.deleteMany({ unitId: u._id });
       }
@@ -86,6 +88,7 @@ async function run() {
   const idxQuestion = headers.findIndex(h => h === 'question');
   const idxOptions = headers.findIndex(h => h === 'options');
   const idxAnswer = headers.findIndex(h => h === 'answer');
+  const idxRevise = headers.findIndex(h => h === 'revise' || h === 'revision');
   
   const imgIndices = [];
   headers.forEach((h, i) => {
@@ -247,6 +250,26 @@ async function run() {
      }
      
      await CurriculumItem.create(itemDoc);
+
+     if (idxRevise !== -1 && row[idxRevise] && row[idxRevise].trim().toUpperCase() === 'Y') {
+         await DefaultRevisionQuestion.create({
+            boardId: board._id,
+            classId: classLevel._id,
+            subjectId: subject._id,
+            chapterId: chapter._id,
+            unitId: unit._id,
+            moduleId: mod._id,
+            lessonIndex: currentOrder,
+            type: itemDoc.type,
+            question: itemDoc.question,
+            text: itemDoc.text,
+            options: itemDoc.options,
+            answer: itemDoc.answer,
+            words: itemDoc.words,
+            images: itemDoc.images,
+            order: currentOrder
+         });
+     }
   }
   
   console.log(`✅ Finished uploading ${filePath}`);

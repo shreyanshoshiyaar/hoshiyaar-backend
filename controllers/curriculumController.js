@@ -6,6 +6,7 @@ import Chapter from '../models/Chapter.js';
 import Module from '../models/Module.js';
 import CurriculumItem from '../models/CurriculumItem.js';
 import Unit from '../models/Unit.js';
+import DefaultRevisionQuestion from '../models/DefaultRevisionQuestion.js';
 
 // GET /api/curriculum/boards
 export const listBoards = async (_req, res) => {
@@ -214,6 +215,7 @@ export const importCurriculum = async (req, res) => {
       // Replace mode: clear existing items first
       if (payload.replace === true || String(payload.replace).toLowerCase() === 'true') {
         await CurriculumItem.deleteMany({ moduleId: module._id });
+        await DefaultRevisionQuestion.deleteMany({ moduleId: module._id });
       }
 
       let order = 0;
@@ -297,6 +299,30 @@ export const importCurriculum = async (req, res) => {
           } else {
             const created = await CurriculumItem.create(updateData);
             processedIds.push(created._id.toString());
+          }
+
+          if (c.revise === 'Y' || c.revise === 'y' || c.revision === 'Y' || c.revision === 'y') {
+            await DefaultRevisionQuestion.findOneAndUpdate(
+              { moduleId: module._id, order: order },
+              { $set: {
+                  boardId: board._id,
+                  classId: classLevel._id,
+                  subjectId: subject._id,
+                  chapterId: chapter._id,
+                  unitId: unit._id,
+                  moduleId: module._id,
+                  lessonIndex: order,
+                  type: updateData.type,
+                  question: updateData.question,
+                  text: updateData.text,
+                  options: updateData.options,
+                  answer: updateData.answer,
+                  words: updateData.words,
+                  images: updateData.images,
+                  order: order
+              } },
+              { upsert: true, new: true }
+            );
           }
           totalItems += 1;
           createdForThisLesson += 1;

@@ -8,6 +8,7 @@ import Chapter from './models/Chapter.js';
 import Unit from './models/Unit.js';
 import Module from './models/Module.js';
 import CurriculumItem from './models/CurriculumItem.js';
+import DefaultRevisionQuestion from './models/DefaultRevisionQuestion.js';
 
 dotenv.config();
 
@@ -38,15 +39,12 @@ function parseFullCsv(text) {
                 currentRow.push(curVal.trim());
                 curVal = '';
             } else if (char === '\n' || char === '\r') {
-                // End of row
                 currentRow.push(curVal.trim());
-                // Only push if row has data
                 if (currentRow.some(c => c.length > 0)) {
                     rows.push(currentRow);
                 }
                 currentRow = [];
                 curVal = '';
-                // Handle \r\n
                 if (char === '\r' && i + 1 < text.length && text[i + 1] === '\n') {
                     i++;
                 }
@@ -55,7 +53,6 @@ function parseFullCsv(text) {
             }
         }
     }
-    // Push the very last value/row
     if (curVal.length > 0 || currentRow.length > 0) {
         currentRow.push(curVal.trim());
         if (currentRow.some(c => c.length > 0)) {
@@ -72,7 +69,7 @@ async function run() {
   console.log("✅ Connected to MongoDB.");
 
   const files = [
-    'D:\\Mindful eating - A path to a healthy body - Mindful eating - A path to a healthy body CBSE.csv'
+    'D:\\Mindful eating - A path to a healthy body - CBSE - final - 5th June.csv'
   ];
 
   const existingFiles = files.filter(f => fs.existsSync(f));
@@ -83,28 +80,33 @@ async function run() {
 
   console.log(`\n📦 Found ${existingFiles.length} CSV files to import:\n` + existingFiles.join('\n') + '\n');
 
-  let targetChapter = await Chapter.findOne({ title: /(Mindful eating|Health.*Ultimate Treasure)/i });
+  let targetChapter = await Chapter.findOne({ title: /Mindful eating - A Path to a Healthy Body/i });
+  let boardId, classId, subjectId;
+
   if (!targetChapter) {
-      console.log("⚠️ Could not find an existing 'Mindful eating' chapter. Trying to create it in CBSE.");
+      console.log("⚠️ Could not find an existing 'Mindful eating' chapter. Trying to create it.");
       let board = await Board.findOne({ name: 'CBSE' }); 
+      if (!board) board = await Board.create({ name: 'CBSE' });
       
       let cls = await ClassLevel.findOne({ boardId: board._id, name: '6' });
-      if (!cls) {
-          console.log("⚠️ Class 6 not found. Creating it...");
-          cls = await ClassLevel.create({ boardId: board._id, name: '6', description: 'Class 6' });
-      }
+      if (!cls) cls = await ClassLevel.create({ boardId: board._id, name: '6' });
 
       let subject = await Subject.findOne({ boardId: board._id, classId: cls._id, name: 'Science' });
-      if (!subject) {
-          console.log("⚠️ Science subject not found for Class 6. Creating it...");
-          subject = await Subject.create({ boardId: board._id, classId: cls._id, name: 'Science', description: 'Science for Class 6' });
-      }
+      if (!subject) subject = await Subject.create({ boardId: board._id, classId: cls._id, name: 'Science', order: 1 });
       
-      targetChapter = await Chapter.create({ subjectId: subject._id, title: 'Chapter 3: Mindful eating - A path to a healthy body', order: 3 });
+      boardId = board._id;
+      classId = cls._id;
+      subjectId = subject._id;
+
+      targetChapter = await Chapter.create({ subjectId: subject._id, title: 'Chapter 3: Mindful eating - A Path to a Healthy Body', order: 3 });
   } else {
-      console.log(`✅ Found Target Chapter: ${targetChapter.title}. Renaming to correct title...`);
-      targetChapter.title = 'Chapter 3: Mindful eating - A path to a healthy body';
-      await targetChapter.save();
+      console.log(`✅ Found Target Chapter: ${targetChapter.title}`);
+      subjectId = targetChapter.subjectId;
+      const sub = await Subject.findById(subjectId);
+      if (sub) {
+          boardId = sub.boardId;
+          classId = sub.classId;
+      }
   }
 
   const unitsToClear = await Unit.find({ chapterId: targetChapter._id });
@@ -112,38 +114,30 @@ async function run() {
       const modsToClear = await Module.find({ unitId: u._id });
       for (const m of modsToClear) {
           await CurriculumItem.deleteMany({ moduleId: m._id });
+          await DefaultRevisionQuestion.deleteMany({ moduleId: m._id });
       }
       await Module.deleteMany({ unitId: u._id });
   }
   await Unit.deleteMany({ chapterId: targetChapter._id });
-  console.log("🧹 Cleared old Mindful Eating modules for a fresh ordered upload.");
+  console.log("🧹 Cleared old Mindful Eating modules and revisions for a fresh ordered upload.");
 
   for (const filePath of existingFiles) {
     console.log(`\n⏳ Processing ${filePath}...`);
     const content = fs.readFileSync(filePath, 'utf-8');
     
-    // Parse the entire file safely supporting newlines inside quotes!
     const rows = parseFullCsv(content);
     if (rows.length < 2) continue;
     
     const headers = rows[0].map(h => h.trim().toLowerCase());
     
-    // Find the first column containing 'lesson' for title, and use a fallback for 'type'
-    // in case type is also incorrectly labeled 'lesson title'
-    const lessonTitleIndices = [];
-    headers.forEach((h, i) => { if (h.includes('lesson')) lessonTitleIndices.push(i); });
-    
-    const idxUnit = headers.findIndex(h => h.includes('unit'));
-    const idxLesson = lessonTitleIndices[0] ?? -1;
-    let idxType = headers.findIndex(h => h.includes('type'));
-    if (idxType === -1 && lessonTitleIndices.length > 1) {
-       idxType = lessonTitleIndices[1];
-    }
-    
-    const idxConcept = headers.findIndex(h => h.includes('concept') || h === 'statement');
-    const idxQuestion = headers.findIndex(h => h.includes('question') && !h.includes('type'));
-    const idxOptions = headers.findIndex(h => h.includes('options'));
-    const idxAnswer = headers.findIndex(h => h.includes('answer'));
+    const idxUnit = headers.findIndex(h => h.includes('unit_title') || h.includes('unit title'));
+    const idxLesson = headers.findIndex(h => h.includes('lesson_title') || h.includes('lesson title'));
+    const idxType = headers.findIndex(h => h === 'type' || h.includes('type'));
+    const idxConcept = headers.findIndex(h => h.includes('concept') || h.includes('statement'));
+    const idxQuestion = headers.findIndex(h => h === 'question' || h.includes('question'));
+    const idxOptions = headers.findIndex(h => h === 'options' || h.includes('options'));
+    const idxAnswer = headers.findIndex(h => h === 'answer' || h.includes('answer'));
+    const idxRevise = headers.findIndex(h => h.includes('revise') || h.includes('revis'));
     
     const imgIndices = [];
     headers.forEach((h, i) => {
@@ -155,14 +149,19 @@ async function run() {
     const unitModuleOrderCounters = {};
 
     let processedCount = 0;
+    let reviseCount = 0;
 
     for (let i = 1; i < rows.length; i++) {
        const row = rows[i];
        
-       if (idxLesson === -1 || idxType === -1 || !row[idxLesson] || !row[idxType]) continue;
+       if (!row[idxLesson] || !row[idxType]) continue;
 
        const unitTitle = row[idxUnit] || 'Default Unit';
        let moduleTitle = row[idxLesson];
+       if (moduleTitle.trim().toLowerCase() === 'difficult module') {
+           moduleTitle = 'HOT MODULE';
+       }
+
        let typeStr = row[idxType].toLowerCase();
 
        if (typeStr === 'statement' || typeStr === 'concept') typeStr = 'concept';
@@ -186,6 +185,7 @@ async function run() {
        const modIdStr = String(mod._id);
        if (!clearedModules.has(modIdStr)) {
           await CurriculumItem.deleteMany({ moduleId: mod._id });
+          await DefaultRevisionQuestion.deleteMany({ moduleId: mod._id });
           clearedModules.add(modIdStr);
        }
 
@@ -198,10 +198,10 @@ async function run() {
           type: typeStr
        };
        
-       const conceptText = (idxConcept !== -1 && row[idxConcept]) ? row[idxConcept].trim() : '';
-       const questionText = (idxQuestion !== -1 && row[idxQuestion]) ? row[idxQuestion].trim() : '';
-       const optionsStr = (idxOptions !== -1 && row[idxOptions]) ? row[idxOptions].trim() : '';
-       const answerText = (idxAnswer !== -1 && row[idxAnswer]) ? row[idxAnswer].trim() : '';
+       const conceptText = row[idxConcept] ? row[idxConcept].trim() : '';
+       const questionText = row[idxQuestion] ? row[idxQuestion].trim() : '';
+       const optionsStr = row[idxOptions] ? row[idxOptions].trim() : '';
+       const answerText = row[idxAnswer] ? row[idxAnswer].trim() : '';
        
        if (typeStr === 'descriptive') {
           itemDoc.question = questionText;
@@ -224,7 +224,7 @@ async function run() {
                      opts = optionsStr.split(',').map(s => s.trim()).filter(Boolean);
                  }
                  
-                 if (itemDoc.answer.includes(',') && optionsStr.includes(';')) {
+                 if (itemDoc.answer && itemDoc.answer.includes(',') && optionsStr.includes(';')) {
                      itemDoc.answer = itemDoc.answer.replace(/,/g, ';');
                  }
 
@@ -237,12 +237,12 @@ async function run() {
                      opts = newOpts;
                  }
                  
-                 const matchingOpt = opts.find(o => o.toLowerCase() === itemDoc.answer.toLowerCase());
-                 if (!matchingOpt) {
+                 const matchingOpt = itemDoc.answer ? opts.find(o => o.toLowerCase() === itemDoc.answer.toLowerCase()) : null;
+                 if (!matchingOpt && itemDoc.answer) {
                      const fuzzyMatch = opts.find(o => o.replace(/;/g, ',').toLowerCase() === itemDoc.answer.replace(/;/g, ',').toLowerCase());
                      if (fuzzyMatch) itemDoc.answer = fuzzyMatch;
                      else if (opts.length > 0 && itemDoc.answer && !opts.includes(itemDoc.answer)) opts[0] = itemDoc.answer;
-                 } else {
+                 } else if (matchingOpt) {
                      itemDoc.answer = matchingOpt;
                  }
                  
@@ -278,8 +278,32 @@ async function run() {
        
        await CurriculumItem.create(itemDoc);
        processedCount++;
+
+       const reviseVal = idxRevise >= 0 && row[idxRevise] ? row[idxRevise].trim().toLowerCase() : '';
+       if (reviseVal === 'y' || reviseVal === 'yes') {
+           await DefaultRevisionQuestion.create({
+              boardId: boardId,
+              classId: classId,
+              subjectId: subjectId,
+              chapterId: targetChapter._id,
+              unitId: unit._id,
+              moduleId: mod._id,
+              lessonIndex: currentOrder,
+              type: itemDoc.type,
+              question: itemDoc.question,
+              text: itemDoc.text,
+              options: itemDoc.options,
+              answer: itemDoc.answer,
+              words: itemDoc.words,
+              images: itemDoc.images,
+              order: currentOrder
+           });
+           reviseCount++;
+       }
     }
-    console.log(`✅ Finished uploading ${filePath} (Created ${processedCount} items)`);
+    console.log(`✅ Finished uploading ${filePath}`);
+    console.log(`   -> Created ${processedCount} items`);
+    console.log(`   -> Added ${reviseCount} items to Revision section`);
   }
 
   console.log("\n🎉 All CSVs successfully uploaded directly to the 'Mindful eating' chapter!");

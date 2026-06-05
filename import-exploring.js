@@ -69,7 +69,7 @@ async function run() {
   console.log("✅ Connected to MongoDB.");
 
   const files = [
-    'D:\\Health-The Ultimate Treasure - Chapter 3_ Health - The Ultimate Treasure.csv'
+    'D:\\Exploring  Substances_ Acidic,  Basic, and Neutral - All (1).csv'
   ];
 
   const existingFiles = files.filter(f => fs.existsSync(f));
@@ -80,33 +80,25 @@ async function run() {
 
   console.log(`\n📦 Found ${existingFiles.length} CSV files to import:\n` + existingFiles.join('\n') + '\n');
 
-  let targetChapter = await Chapter.findOne({ title: /Health - The Ultimate Treasure/i });
-  let boardId, classId, subjectId;
+  let board = await Board.findOne({ name: 'CBSE' }); 
+  if (!board) board = await Board.create({ name: 'CBSE' });
+  
+  let cls = await ClassLevel.findOne({ boardId: board._id, name: '7' });
+  if (!cls) cls = await ClassLevel.create({ boardId: board._id, name: '7' });
 
+  let subject = await Subject.findOne({ boardId: board._id, classId: cls._id, name: 'Science' });
+  if (!subject) subject = await Subject.create({ boardId: board._id, classId: cls._id, name: 'Science', order: 1 });
+  
+  const boardId = board._id;
+  const classId = cls._id;
+  const subjectId = subject._id;
+
+  let targetChapter = await Chapter.findOne({ subjectId: subject._id, title: /Exploring Substances/i });
   if (!targetChapter) {
-      console.log("⚠️ Could not find an existing 'Health - The Ultimate Treasure' chapter. Trying to create it.");
-      let board = await Board.findOne({ name: 'CBSE' }); 
-      if (!board) board = await Board.create({ name: 'CBSE' });
-      
-      let cls = await ClassLevel.findOne({ boardId: board._id, name: '8' });
-      if (!cls) cls = await ClassLevel.create({ boardId: board._id, name: '8' });
-
-      let subject = await Subject.findOne({ boardId: board._id, classId: cls._id, name: 'Science' });
-      if (!subject) subject = await Subject.create({ boardId: board._id, classId: cls._id, name: 'Science', order: 1 });
-      
-      boardId = board._id;
-      classId = cls._id;
-      subjectId = subject._id;
-
-      targetChapter = await Chapter.create({ subjectId: subject._id, title: 'Chapter 3: Health - The Ultimate Treasure', order: 3 });
+      console.log("⚠️ Could not find an existing 'Exploring Substances' chapter. Trying to create it.");
+      targetChapter = await Chapter.create({ subjectId: subject._id, title: 'Chapter 2: Exploring Substances: Acidic, Basic, and Neutral', order: 2 });
   } else {
       console.log(`✅ Found Target Chapter: ${targetChapter.title}`);
-      subjectId = targetChapter.subjectId;
-      const sub = await Subject.findById(subjectId);
-      if (sub) {
-          boardId = sub.boardId;
-          classId = sub.classId;
-      }
   }
 
   const unitsToClear = await Unit.find({ chapterId: targetChapter._id });
@@ -119,7 +111,7 @@ async function run() {
       await Module.deleteMany({ unitId: u._id });
   }
   await Unit.deleteMany({ chapterId: targetChapter._id });
-  console.log("🧹 Cleared old Health modules and revisions for a fresh ordered upload.");
+  console.log("🧹 Cleared old Exploring Substances modules and revisions for a fresh ordered upload.");
 
   for (const filePath of existingFiles) {
     console.log(`\n⏳ Processing ${filePath}...`);
@@ -130,14 +122,14 @@ async function run() {
     
     const headers = rows[0].map(h => h.trim().toLowerCase());
     
-    const idxUnit = headers.findIndex(h => h.includes('unit_title'));
-    const idxLesson = headers.findIndex(h => h.includes('lesson_title'));
+    const idxUnit = headers.findIndex(h => h.includes('unit_title') || h.includes('unit title'));
+    const idxLesson = headers.findIndex(h => h.includes('lesson_title') || h.includes('lesson title'));
     const idxType = headers.findIndex(h => h === 'type' || h.includes('type'));
-    const idxConcept = headers.findIndex(h => h === 'statement' || h.includes('concept'));
+    const idxConcept = headers.findIndex(h => h.includes('concept') || h.includes('statement'));
     const idxQuestion = headers.findIndex(h => h === 'question' || h.includes('question'));
     const idxOptions = headers.findIndex(h => h === 'options' || h.includes('options'));
     const idxAnswer = headers.findIndex(h => h === 'answer' || h.includes('answer'));
-    const idxRevise = headers.findIndex(h => h === 'revise' || h.includes('revise'));
+    const idxRevise = headers.findIndex(h => h.includes('revise') || h.includes('revis'));
     
     const imgIndices = [];
     headers.forEach((h, i) => {
@@ -158,6 +150,10 @@ async function run() {
 
        const unitTitle = row[idxUnit] || 'Default Unit';
        let moduleTitle = row[idxLesson];
+       if (moduleTitle.trim().toLowerCase() === 'difficult module') {
+           moduleTitle = 'HOT MODULE';
+       }
+
        let typeStr = row[idxType].toLowerCase();
 
        if (typeStr === 'statement' || typeStr === 'concept') typeStr = 'concept';
@@ -302,7 +298,7 @@ async function run() {
     console.log(`   -> Added ${reviseCount} items to Revision section`);
   }
 
-  console.log("\n🎉 All CSVs successfully uploaded directly to the 'Health - The Ultimate Treasure' chapter!");
+  console.log("\n🎉 All CSVs successfully uploaded directly to the Exploring Substances chapter!");
   process.exit(0);
 }
 

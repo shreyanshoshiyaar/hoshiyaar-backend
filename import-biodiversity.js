@@ -8,15 +8,19 @@ import Chapter from './models/Chapter.js';
 import Unit from './models/Unit.js';
 import Module from './models/Module.js';
 import CurriculumItem from './models/CurriculumItem.js';
+import DefaultRevisionQuestion from './models/DefaultRevisionQuestion.js';
 
 dotenv.config();
 
-function parseCsvLine(text) {
-    let result = [];
+function parseFullCsv(text) {
+    let rows = [];
+    let currentRow = [];
     let curVal = '';
     let inQuotes = false;
+    
     for (let i = 0; i < text.length; i++) {
         let char = text[i];
+        
         if (inQuotes) {
             if (char === '"') {
                 if (i + 1 < text.length && text[i + 1] === '"') {
@@ -32,15 +36,30 @@ function parseCsvLine(text) {
             if (char === '"') {
                 inQuotes = true;
             } else if (char === ',') {
-                result.push(curVal.trim());
+                currentRow.push(curVal.trim());
                 curVal = '';
+            } else if (char === '\n' || char === '\r') {
+                currentRow.push(curVal.trim());
+                if (currentRow.some(c => c.length > 0)) {
+                    rows.push(currentRow);
+                }
+                currentRow = [];
+                curVal = '';
+                if (char === '\r' && i + 1 < text.length && text[i + 1] === '\n') {
+                    i++;
+                }
             } else {
                 curVal += char;
             }
         }
     }
-    result.push(curVal.trim());
-    return result;
+    if (curVal.length > 0 || currentRow.length > 0) {
+        currentRow.push(curVal.trim());
+        if (currentRow.some(c => c.length > 0)) {
+            rows.push(currentRow);
+        }
+    }
+    return rows;
 }
 
 const MONGO_URI = process.env.MONGO_URI;
@@ -50,47 +69,76 @@ async function run() {
   console.log("✅ Connected to MongoDB.");
 
   const files = [
-    'D:\\Q&A Biodiversity - Unit 1 (3).csv',
-    'D:\\Q&A Biodiversity - Unit 2 (1).csv'
+    'D:\\Q&A Biodiversity - Unit 1 (4).csv',
+    'D:\\Q&A Biodiversity - Unit 2 (2).csv'
   ];
 
-  // Specific cleanup to reset order for the newly uploaded CSVs without touching other chapters
-  const chapterToClear = await Chapter.findOne({ title: 'Chapter 2: Diversity in the Living World' });
-  if (chapterToClear) {
-      const unitsToClear = await Unit.find({ chapterId: chapterToClear._id });
-      for (const u of unitsToClear) {
-          const modsToClear = await Module.find({ unitId: u._id });
-          for (const m of modsToClear) {
-              await CurriculumItem.deleteMany({ moduleId: m._id });
-          }
-          await Module.deleteMany({ unitId: u._id });
-      }
-      console.log("🧹 Cleared old Biodiversity modules for a fresh ordered upload.");
+  const existingFiles = files.filter(f => fs.existsSync(f));
+  if (existingFiles.length === 0) {
+      console.log("❌ Could not find the CSV files on D drive! Please check the exact names.");
+      process.exit(1);
   }
 
-  for (const filePath of files) {
-    if (!fs.existsSync(filePath)) {
-       console.log(`❌ File not found: ${filePath}`);
-       continue;
-    }
+  console.log(`\n📦 Found ${existingFiles.length} CSV files to import:\n` + existingFiles.join('\n') + '\n');
+
+  let targetChapter = await Chapter.findOne({ title: /Diversity in the Living World/i });
+  let boardId, classId, subjectId;
+
+  if (!targetChapter) {
+      console.log("⚠️ Could not find an existing 'Diversity in the Living World' chapter. Trying to create it.");
+      let board = await Board.findOne({ name: 'CBSE' }); 
+      if (!board) board = await Board.create({ name: 'CBSE' });
+      
+      let cls = await ClassLevel.findOne({ boardId: board._id, name: '6' });
+      if (!cls) cls = await ClassLevel.create({ boardId: board._id, name: '6' });
+
+      let subject = await Subject.findOne({ boardId: board._id, classId: cls._id, name: 'Science' });
+      if (!subject) subject = await Subject.create({ boardId: board._id, classId: cls._id, name: 'Science', order: 1 });
+      
+      boardId = board._id;
+      classId = cls._id;
+      subjectId = subject._id;
+
+      targetChapter = await Chapter.create({ subjectId: subject._id, title: 'Chapter 2: Diversity in the Living World', order: 2 });
+  } else {
+      console.log(`✅ Found Target Chapter: ${targetChapter.title}`);
+      subjectId = targetChapter.subjectId;
+      const sub = await Subject.findById(subjectId);
+      if (sub) {
+          boardId = sub.boardId;
+          classId = sub.classId;
+      }
+  }
+
+  const unitsToClear = await Unit.find({ chapterId: targetChapter._id });
+  for (const u of unitsToClear) {
+      const modsToClear = await Module.find({ unitId: u._id });
+      for (const m of modsToClear) {
+          await CurriculumItem.deleteMany({ moduleId: m._id });
+          await DefaultRevisionQuestion.deleteMany({ moduleId: m._id });
+      }
+      await Module.deleteMany({ unitId: u._id });
+  }
+  await Unit.deleteMany({ chapterId: targetChapter._id });
+  console.log("🧹 Cleared old Biodiversity modules and revisions for a fresh ordered upload.");
+
+  for (const filePath of existingFiles) {
     console.log(`\n⏳ Processing ${filePath}...`);
     const content = fs.readFileSync(filePath, 'utf-8');
-    const lines = content.split(/\r?\n/).filter(l => l.trim().length > 0);
-    if (lines.length === 0) continue;
     
-    const headers = parseCsvLine(lines[0]).map(h => h.trim().toLowerCase());
+    const rows = parseFullCsv(content);
+    if (rows.length < 2) continue;
     
-    const idxBoard = headers.findIndex(h => h === 'board_title');
-    const idxClass = headers.findIndex(h => h === 'class_title');
-    const idxSubject = headers.findIndex(h => h === 'subject');
-    const idxChapter = headers.findIndex(h => h === 'chapter_title');
-    const idxUnit = headers.findIndex(h => h === 'unit_title');
-    const idxLesson = headers.findIndex(h => h === 'lesson_title');
-    const idxType = headers.findIndex(h => h === 'type');
-    const idxConcept = headers.findIndex(h => h === 'concept/statement');
-    const idxQuestion = headers.findIndex(h => h === 'question');
-    const idxOptions = headers.findIndex(h => h === 'options');
-    const idxAnswer = headers.findIndex(h => h === 'answer');
+    const headers = rows[0].map(h => h.trim().toLowerCase());
+    
+    const idxUnit = headers.findIndex(h => h.includes('unit_title'));
+    const idxLesson = headers.findIndex(h => h.includes('lesson_title'));
+    const idxType = headers.findIndex(h => h === 'type' || h.includes('type'));
+    const idxConcept = headers.findIndex(h => h.includes('concept') || h.includes('statement'));
+    const idxQuestion = headers.findIndex(h => h === 'question' || h.includes('question'));
+    const idxOptions = headers.findIndex(h => h === 'options' || h.includes('options'));
+    const idxAnswer = headers.findIndex(h => h === 'answer' || h.includes('answer'));
+    const idxRevise = headers.findIndex(h => h.includes('revise'));
     
     const imgIndices = [];
     headers.forEach((h, i) => {
@@ -101,57 +149,44 @@ async function run() {
     const orderCounters = {};
     const unitModuleOrderCounters = {};
 
-    for (let i = 1; i < lines.length; i++) {
-       const row = parseCsvLine(lines[i]);
+    let processedCount = 0;
+    let reviseCount = 0;
+
+    for (let i = 1; i < rows.length; i++) {
+       const row = rows[i];
+       
        if (!row[idxLesson] || !row[idxType]) continue;
 
-       const boardTitle = row[idxBoard] || 'CBSE';
-       const classTitle = row[idxClass] || '6';
-       const subjectTitle = row[idxSubject] || 'Science';
-       const chapterTitle = row[idxChapter] || 'Chapter 2: Diversity in the Living World'; // Fallback for Unit 2
        const unitTitle = row[idxUnit] || 'Default Unit';
        let moduleTitle = row[idxLesson];
-       let typeStr = row[idxType].toLowerCase();
-
-       // Handle Hot Module renaming
-       if (moduleTitle.toLowerCase() === 'difficult module') {
-          moduleTitle = 'HOT Module';
+       if (moduleTitle.trim().toLowerCase() === 'difficult module') {
+           moduleTitle = 'HOT MODULE';
        }
 
-       // 1. Resolve Board
-       let board = await Board.findOne({ name: boardTitle });
-       if (!board) board = await Board.create({ name: boardTitle, slug: boardTitle.toLowerCase() });
+       let typeStr = row[idxType].toLowerCase();
 
-       // 2. Resolve ClassLevel
-       let classLevel = await ClassLevel.findOne({ boardId: board._id, name: classTitle });
-       if (!classLevel) classLevel = await ClassLevel.create({ boardId: board._id, name: classTitle, order: parseInt(classTitle) || 1 });
+       if (typeStr === 'statement' || typeStr === 'concept') typeStr = 'concept';
+       else if (typeStr === 're-arrange' || typeStr === 'rearrange') typeStr = 're-arrange';
+       else if (typeStr === 'fill-in-the-blank' || typeStr === 'fib') typeStr = 'fib';
+       else if (typeStr.includes('mcq')) typeStr = 'mcq';
 
-       // 3. Resolve Subject
-       let subject = await Subject.findOne({ boardId: board._id, classId: classLevel._id, name: subjectTitle });
-       if (!subject) subject = await Subject.create({ boardId: board._id, classId: classLevel._id, name: subjectTitle, icon: 'book' });
+       let unit = await Unit.findOne({ chapterId: targetChapter._id, title: unitTitle });
+       if (!unit) unit = await Unit.create({ chapterId: targetChapter._id, title: unitTitle, order: 1 });
 
-       // 4. Resolve Chapter
-       let chapter = await Chapter.findOne({ subjectId: subject._id, title: chapterTitle });
-       if (!chapter) chapter = await Chapter.create({ subjectId: subject._id, title: chapterTitle, order: 1 });
-
-       // 5. Resolve Unit
-       let unit = await Unit.findOne({ chapterId: chapter._id, title: unitTitle });
-       if (!unit) unit = await Unit.create({ chapterId: chapter._id, title: unitTitle, order: 1 });
-
-       // 6. Resolve Module with Order tracking
        const unitIdStr = String(unit._id);
        if (!unitModuleOrderCounters[unitIdStr]) {
           unitModuleOrderCounters[unitIdStr] = 1;
        }
 
-       let mod = await Module.findOne({ chapterId: chapter._id, unitId: unit._id, title: moduleTitle });
+       let mod = await Module.findOne({ chapterId: targetChapter._id, unitId: unit._id, title: moduleTitle });
        if (!mod) {
-           mod = await Module.create({ chapterId: chapter._id, unitId: unit._id, title: moduleTitle, order: unitModuleOrderCounters[unitIdStr]++ });
+           mod = await Module.create({ chapterId: targetChapter._id, unitId: unit._id, title: moduleTitle, order: unitModuleOrderCounters[unitIdStr]++ });
        }
 
        const modIdStr = String(mod._id);
        if (!clearedModules.has(modIdStr)) {
           await CurriculumItem.deleteMany({ moduleId: mod._id });
+          await DefaultRevisionQuestion.deleteMany({ moduleId: mod._id });
           clearedModules.add(modIdStr);
        }
 
@@ -164,19 +199,15 @@ async function run() {
           type: typeStr
        };
        
-       const conceptText = row[idxConcept] ? row[idxConcept].replace(/^"|"$/g, '').trim() : '';
-       const questionText = row[idxQuestion] ? row[idxQuestion].replace(/^"|"$/g, '').trim() : '';
-       const optionsStr = row[idxOptions] ? row[idxOptions].replace(/^"|"$/g, '').trim() : '';
-       const answerText = row[idxAnswer] ? row[idxAnswer].replace(/^"|"$/g, '').trim() : '';
+       const conceptText = row[idxConcept] ? row[idxConcept].trim() : '';
+       const questionText = row[idxQuestion] ? row[idxQuestion].trim() : '';
+       const optionsStr = row[idxOptions] ? row[idxOptions].trim() : '';
+       const answerText = row[idxAnswer] ? row[idxAnswer].trim() : '';
        
        if (typeStr === 'descriptive') {
           itemDoc.question = questionText;
-          if (conceptText) {
-             itemDoc.modelAnswers = [conceptText];
-          }
-          if (answerText) {
-             itemDoc.keywords = answerText.split(',').map(s => s.trim()).filter(Boolean);
-          }
+          if (conceptText) itemDoc.modelAnswers = [conceptText];
+          if (answerText) itemDoc.keywords = answerText.split(',').map(s => s.trim()).filter(Boolean);
        } else if (['mcq', 're-arrange', 'fib'].includes(typeStr)) {
           if (typeStr === 'mcq') itemDoc.type = 'multiple-choice';
           if (typeStr === 'fib') itemDoc.type = 'fill-in-the-blank';
@@ -187,26 +218,17 @@ async function run() {
           
           if (optionsStr) {
              if (itemDoc.type === 'multiple-choice') {
-                 // Try to detect if options are separated by commas but contain sub-commas.
-                 // A heuristic: if the option string contains ';' or if it has more than 5 commas,
-                 // they might have used some custom separator. But let's just do a basic split.
                  let opts = [];
-                 if (optionsStr.includes(', ')) {
-                     // Sometimes they use ", " to separate items inside an option, and "," to separate options?
-                     // It's safer to split by ',' first.
+                 if (optionsStr.includes(',')) {
                      opts = optionsStr.split(',').map(s => s.trim()).filter(Boolean);
                  } else {
                      opts = optionsStr.split(',').map(s => s.trim()).filter(Boolean);
                  }
                  
-                 // Fix specific known CSV typos where answer has commas but option has semicolons
-                 if (itemDoc.answer.includes(',') && optionsStr.includes(';')) {
+                 if (itemDoc.answer && itemDoc.answer.includes(',') && optionsStr.includes(';')) {
                      itemDoc.answer = itemDoc.answer.replace(/,/g, ';');
                  }
 
-                 // Fix the messy "Environment → place around us" etc.
-                 // If opts length is > 4, it means commas inside the options were split.
-                 // Let's re-group them into chunks of 2 or 3 if they seem split incorrectly.
                  if (opts.length === 6 || opts.length === 9) {
                      const chunkSize = opts.length / 3;
                      const newOpts = [];
@@ -216,22 +238,13 @@ async function run() {
                      opts = newOpts;
                  }
                  
-                 // Ensure the answer exactly matches one of the options (ignoring order of words sometimes, or just standardizing)
-                 const matchingOpt = opts.find(o => o.toLowerCase() === itemDoc.answer.toLowerCase());
-                 if (!matchingOpt) {
-                     // Try to see if there is an option that contains the answer or vice-versa
+                 const matchingOpt = itemDoc.answer ? opts.find(o => o.toLowerCase() === itemDoc.answer.toLowerCase()) : null;
+                 if (!matchingOpt && itemDoc.answer) {
                      const fuzzyMatch = opts.find(o => o.replace(/;/g, ',').toLowerCase() === itemDoc.answer.replace(/;/g, ',').toLowerCase());
-                     if (fuzzyMatch) {
-                         itemDoc.answer = fuzzyMatch;
-                     } else if (opts.length > 0 && itemDoc.answer) {
-                         // Force the answer to exactly equal the closest option if they messed up formatting
-                         // Or just add the answer as an option if it's completely missing
-                         if (!opts.includes(itemDoc.answer)) {
-                             opts[0] = itemDoc.answer; // Replace first option with correct answer to guarantee it's clickable
-                         }
-                     }
-                 } else {
-                     itemDoc.answer = matchingOpt; // preserve exact case
+                     if (fuzzyMatch) itemDoc.answer = fuzzyMatch;
+                     else if (opts.length > 0 && itemDoc.answer && !opts.includes(itemDoc.answer)) opts[0] = itemDoc.answer;
+                 } else if (matchingOpt) {
+                     itemDoc.answer = matchingOpt;
                  }
                  
                  itemDoc.options = opts;
@@ -244,7 +257,7 @@ async function run() {
           itemDoc.text = conceptText || questionText;
           if (typeStr === 'video') itemDoc.question = questionText;
        } else {
-          continue; // Skip unknowns
+          continue; 
        }
        
        const images = [];
@@ -260,17 +273,41 @@ async function run() {
              itemDoc.imageUrl = images[0];
           } else if (itemDoc.type === 'video') {
              itemDoc.videoUrl = images[0];
-             // Videos also use imageUrl for thumbnail in some old code, safe to keep
              itemDoc.imageUrl = images[0]; 
           }
        }
        
        await CurriculumItem.create(itemDoc);
+       processedCount++;
+
+       const reviseVal = idxRevise >= 0 && row[idxRevise] ? row[idxRevise].trim().toLowerCase() : '';
+       if (reviseVal === 'y' || reviseVal === 'yes') {
+           await DefaultRevisionQuestion.create({
+              boardId: boardId,
+              classId: classId,
+              subjectId: subjectId,
+              chapterId: targetChapter._id,
+              unitId: unit._id,
+              moduleId: mod._id,
+              lessonIndex: currentOrder,
+              type: itemDoc.type,
+              question: itemDoc.question,
+              text: itemDoc.text,
+              options: itemDoc.options,
+              answer: itemDoc.answer,
+              words: itemDoc.words,
+              images: itemDoc.images,
+              order: currentOrder
+           });
+           reviseCount++;
+       }
     }
     console.log(`✅ Finished uploading ${filePath}`);
+    console.log(`   -> Created ${processedCount} items`);
+    console.log(`   -> Added ${reviseCount} items to Revision section`);
   }
 
-  console.log("\n🎉 All CSVs successfully uploaded!");
+  console.log("\n🎉 All CSVs successfully uploaded directly to the 'Diversity in the Living World' chapter!");
   process.exit(0);
 }
 

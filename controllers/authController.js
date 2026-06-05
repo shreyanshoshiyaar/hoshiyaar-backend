@@ -5,6 +5,7 @@ import Subject from '../models/Subject.js';
 import Chapter from '../models/Chapter.js';
 import Module from '../models/Module.js';
 import Otp from '../models/Otp.js';
+import OtpRateLimit from '../models/OtpRateLimit.js';
 import jwt from 'jsonwebtoken';
 
 // Helper function to generate a JWT
@@ -25,6 +26,25 @@ export const sendOtp = async (req, res) => {
   }
 
   try {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    let rateLimit = await OtpRateLimit.findOne({ phone });
+
+    if (rateLimit) {
+      if (rateLimit.date === today) {
+        if (rateLimit.count >= 5) {
+          return res.status(429).json({ message: 'Daily limit reached. You can only generate 5 OTPs per day.' });
+        }
+        rateLimit.count += 1;
+        await rateLimit.save();
+      } else {
+        rateLimit.count = 1;
+        rateLimit.date = today;
+        await rateLimit.save();
+      }
+    } else {
+      await OtpRateLimit.create({ phone, date: today, count: 1 });
+    }
+
     // Generate a 6-digit OTP
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
 

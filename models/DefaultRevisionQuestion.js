@@ -12,7 +12,7 @@ const DefaultRevisionQuestionSchema = new Schema({
   // Position of the concept within its lesson for deterministic review flow
   lessonIndex: { type: Number },
   // Question payload
-  type: { type: String, enum: ['multiple-choice','fill-in-the-blank','rearrange','statement'], required: true },
+  type: { type: String, enum: ['multiple-choice','fill-in-the-blank','rearrange','statement','comic','concept','descriptive','video'], required: true },
   question: { type: String },
   text: { type: String },
   options: { type: [String], default: [] },

@@ -13,7 +13,7 @@ const payload = {
   template: {
     name: 'login_otp',
     language: {
-      code: 'en_US'
+      code: 'en'
     },
     components: [
       {

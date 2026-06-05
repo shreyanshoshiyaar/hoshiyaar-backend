@@ -50,51 +50,12 @@ export const listSubjects = async (req, res) => {
 // GET /api/curriculum/classes?board=CBSE
 export const listClasses = async (req, res) => {
   try {
-    const users = await User.find({ phone: { $in: ['9867735936', '+919867735936', '7021970672', '+917021970672'] } });
-    const allModules = await Module.find({});
-    let results = [];
-    for (const user of users) {
-      if (!user.progress) user.progress = [];
-      let updated = 0;
-      for (const mod of allModules) {
-        const pIndex = user.progress.findIndex(p => p.moduleId.toString() === mod._id.toString());
-        if (pIndex === -1) {
-          user.progress.push({
-            moduleId: mod._id,
-            subject: 'Science',
-            conceptCompleted: true,
-            conceptScore: 100,
-            mcqCompleted: true,
-            mcqScore: 100,
-            fillupsCompleted: true,
-            fillupsScore: 100,
-            rearrangeCompleted: true,
-            rearrangeScore: 100,
-            descriptiveCompleted: true,
-            descriptiveScore: 100,
-            status: 'completed',
-            updatedAt: new Date()
-          });
-          updated++;
-        } else {
-          user.progress[pIndex].conceptCompleted = true;
-          user.progress[pIndex].mcqCompleted = true;
-          user.progress[pIndex].fillupsCompleted = true;
-          user.progress[pIndex].rearrangeCompleted = true;
-          user.progress[pIndex].descriptiveCompleted = true;
-          user.progress[pIndex].status = 'completed';
-          user.progress[pIndex].updatedAt = new Date();
-        }
-      }
-      await user.save();
-      results.push('Updated user ' + user.phone + ' with ' + updated + ' new modules completed');
-    }
-    
     const { board = 'CBSE' } = req.query;
     const b = await Board.findOne({ name: board });
-    if (!b) return res.json({results, classes: []});
+    if (!b) return res.json([]);
+    
     const classes = await ClassLevel.find({ boardId: b._id }).sort({ order: 1, name: 1 });
-    return res.json({results, classes});
+    return res.json(classes);
   } catch (err) {
     return res.status(500).json({ message: 'Server Error' });
   }

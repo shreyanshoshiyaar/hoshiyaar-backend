@@ -502,6 +502,13 @@ export const listModules = async (req, res) => {
   try {
     const { chapterId, unitId } = req.query;
     if (!chapterId && !unitId) return res.status(400).json({ message: 'chapterId or unitId is required' });
+    
+    // Validate ObjectId to prevent CastError (500)
+    const isValidId = (id) => id && /^[0-9a-fA-F]{24}$/.test(id);
+    if ((chapterId && !isValidId(chapterId)) || (unitId && !isValidId(unitId))) {
+      return res.json([]);
+    }
+
     const filter = unitId ? { unitId } : { chapterId };
     const modules = await Module.find(filter).sort({ order: 1 });
     return res.json(modules);
@@ -515,6 +522,12 @@ export const listItems = async (req, res) => {
   try {
     const { moduleId } = req.query;
     if (!moduleId) return res.status(400).json({ message: 'moduleId is required' });
+    
+    // Validate ObjectId to prevent CastError (500)
+    if (!/^[0-9a-fA-F]{24}$/.test(moduleId)) {
+      return res.json([]);
+    }
+    
     const items = await CurriculumItem.find({ moduleId }).sort({ order: 1 });
     return res.json(items);
   } catch (err) {

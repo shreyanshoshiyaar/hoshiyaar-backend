@@ -303,12 +303,23 @@ export const loginUser = async (req, res) => {
   }
 
   try {
-    // Find user by phone, trimming any extra spaces from input
     const cleanPhone = String(phone).trim();
-    const user = await User.findOne({ phone: cleanPhone });
+    let formattedPhone = cleanPhone.replace(/\D/g, '');
+    let tenDigitPhone = formattedPhone.length > 10 ? formattedPhone.slice(-10) : formattedPhone;
+    let ninetyOnePhone = `91${tenDigitPhone}`;
+    let plusNinetyOnePhone = `+91${tenDigitPhone}`;
+
+    const user = await User.findOne({ 
+      $or: [
+        { phone: cleanPhone },
+        { phone: tenDigitPhone },
+        { phone: ninetyOnePhone },
+        { phone: plusNinetyOnePhone }
+      ]
+    });
 
     // Check if user exists and then compare the password
-    if (user && (await user.matchPassword(String(password).trim()))) {
+    if (user && (await user.matchPassword(String(password)))) {
       res.json({
         _id: user._id,
         username: user.username,

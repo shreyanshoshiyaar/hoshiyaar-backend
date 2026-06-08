@@ -134,7 +134,7 @@ async function run() {
     const idxLesson = headers.findIndex(h => h.includes('lesson_title'));
     const idxType = headers.findIndex(h => h === 'type' || h.includes('type'));
     const idxConcept = headers.findIndex(h => h === 'statement' || h.includes('concept'));
-    const idxQuestion = headers.findIndex(h => h === 'question' || h.includes('question'));
+    const idxQuestion = headers.findIndex(h => (h.includes('question') || h === 'questions') && !h.includes('type'));
     const idxOptions = headers.findIndex(h => h === 'options' || h.includes('options'));
     const idxAnswer = headers.findIndex(h => h === 'answer' || h.includes('answer'));
     const idxRevise = headers.findIndex(h => h === 'revise' || h.includes('revise'));

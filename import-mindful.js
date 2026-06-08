@@ -110,7 +110,12 @@ async function run() {
   }
 
   const unitsToClear = await Unit.find({ chapterId: targetChapter._id });
+  const unitBgs = {};
   for (const u of unitsToClear) {
+      unitBgs[u.title] = {
+          headerBgUrl: u.headerBgUrl || "",
+          timelineBgUrl: u.timelineBgUrl || ""
+      };
       const modsToClear = await Module.find({ unitId: u._id });
       for (const m of modsToClear) {
           await CurriculumItem.deleteMany({ moduleId: m._id });
@@ -134,7 +139,7 @@ async function run() {
     const idxLesson = headers.findIndex(h => h.includes('lesson_title') || h.includes('lesson title'));
     const idxType = headers.findIndex(h => h === 'type' || h.includes('type'));
     const idxConcept = headers.findIndex(h => h.includes('concept') || h.includes('statement'));
-    const idxQuestion = headers.findIndex(h => h === 'question' || h.includes('question'));
+    const idxQuestion = headers.findIndex(h => (h.includes('question') || h === 'questions') && !h.includes('type'));
     const idxOptions = headers.findIndex(h => h === 'options' || h.includes('options'));
     const idxAnswer = headers.findIndex(h => h === 'answer' || h.includes('answer'));
     const idxRevise = headers.findIndex(h => h.includes('revise') || h.includes('revis'));
@@ -170,7 +175,16 @@ async function run() {
        else if (typeStr.includes('mcq')) typeStr = 'mcq';
 
        let unit = await Unit.findOne({ chapterId: targetChapter._id, title: unitTitle });
-       if (!unit) unit = await Unit.create({ chapterId: targetChapter._id, title: unitTitle, order: 1 });
+       if (!unit) {
+           const bgs = unitBgs[unitTitle] || {};
+           unit = await Unit.create({ 
+               chapterId: targetChapter._id, 
+               title: unitTitle, 
+               order: 1,
+               headerBgUrl: bgs.headerBgUrl || "",
+               timelineBgUrl: bgs.timelineBgUrl || ""
+           });
+       }
 
        const unitIdStr = String(unit._id);
        if (!unitModuleOrderCounters[unitIdStr]) {

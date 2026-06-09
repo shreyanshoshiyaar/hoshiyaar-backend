@@ -54,6 +54,11 @@ export const listClasses = async (req, res) => {
     const b = await Board.findOne({ name: board });
     if (!b) return res.json([]);
     
+    // Cleanup Eduvate Class 7 directly
+    if (b.name === 'Eduvate') {
+      await ClassLevel.deleteMany({ boardId: b._id, name: '7' });
+    }
+
     const classes = await ClassLevel.find({ boardId: b._id }).sort({ order: 1, name: 1 });
     return res.json(classes);
   } catch (err) {

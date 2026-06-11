@@ -9,6 +9,7 @@ import Chapter from './models/Chapter.js';
 import Unit from './models/Unit.js';
 import Module from './models/Module.js';
 import CurriculumItem from './models/CurriculumItem.js';
+import Subject from './models/Subject.js';
 import DefaultRevisionQuestion from './models/DefaultRevisionQuestion.js';
 
 const run = async () => {
@@ -19,6 +20,9 @@ const run = async () => {
     const chapter = await Chapter.findOne({ title: "Chapter 2: Diversity in the Living World" });
     if (!chapter) throw new Error("Chapter not found");
 
+    const subject = await Subject.findById(chapter.subjectId);
+    if (!subject) throw new Error("Subject not found");
+
     const processUnit = async (unitTitle, csvPath) => {
       console.log(`\n=== Processing ${unitTitle} ===`);
       const unit = await Unit.findOne({ chapterId: chapter._id, title: unitTitle });
@@ -28,9 +32,9 @@ const run = async () => {
       const existingModules = await Module.find({ unitId: unit._id });
       for (const mod of existingModules) {
         await CurriculumItem.deleteMany({ moduleId: mod._id });
-        await DefaultRevisionQuestion.deleteMany({ moduleId: mod._id });
       }
       await Module.deleteMany({ unitId: unit._id });
+      await DefaultRevisionQuestion.deleteMany({ unitId: unit._id });
       console.log(`Cleared existing modules and items for ${unitTitle}.`);
 
       const data = Papa.parse(fs.readFileSync(csvPath, 'utf8'), { header: true, skipEmptyLines: true }).data;
@@ -109,7 +113,15 @@ const run = async () => {
         const question = String(row.Question || row.question || '').trim();
         const text = String(row['concept/statement'] || '').trim();
         const answer = String(row.answer || '').trim();
-        const revise = String(row['Revise?'] || row.Revise || row.revise || row['revise?'] || '').trim();
+        let reviseRaw = '';
+        const keys = Object.keys(row);
+        for(const k of keys) {
+            if(k.toLowerCase().includes('revise')) {
+                reviseRaw = String(row[k] || '').trim().replace(/\r/g, '').toLowerCase();
+                if(reviseRaw === 'y' || reviseRaw === 'yes') break;
+            }
+        }
+        const revise = (reviseRaw === 'y' || reviseRaw === 'yes');
         
         itemOrder++;
         const newItem = new CurriculumItem({
@@ -126,6 +138,29 @@ const run = async () => {
           images: images
         });
         await newItem.save();
+
+        if (revise) {
+          const revQ = new DefaultRevisionQuestion({
+            boardId: subject.boardId,
+            classId: subject.classId,
+            subjectId: subject._id,
+            chapterId: chapter._id,
+            unitId: unit._id,
+            moduleId: currentModuleId,
+            lessonIndex: moduleOrder, // using moduleOrder as proxy
+            type: mappedType,
+            question: question,
+            text: text,
+            options: options,
+            answer: answer,
+            words: (mappedType === 'rearrange') ? options : undefined,
+            images: images,
+            order: itemOrder,
+            active: true
+          });
+          await revQ.save();
+        }
+
         itemsCreated++;
       }
       

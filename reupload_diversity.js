@@ -113,14 +113,7 @@ const run = async () => {
         const question = String(row.Question || row.question || '').trim();
         const text = String(row['concept/statement'] || '').trim();
         const answer = String(row.answer || '').trim();
-        let reviseRaw = '';
-        const keys = Object.keys(row);
-        for(const k of keys) {
-            if(k.toLowerCase().includes('revise')) {
-                reviseRaw = String(row[k] || '').trim().replace(/\r/g, '').toLowerCase();
-                if(reviseRaw === 'y' || reviseRaw === 'yes') break;
-            }
-        }
+        const reviseRaw = String(row['Revise?'] || row.Revise || row.revise || row['revise?'] || '').trim().toLowerCase();
         const revise = (reviseRaw === 'y' || reviseRaw === 'yes');
         
         itemOrder++;

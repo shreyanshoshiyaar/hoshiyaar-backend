@@ -55,7 +55,7 @@ export const listClasses = async (req, res) => {
     if (!b) return res.json([]);
     
     // Cleanup Eduvate Class 7 directly
-    if (b.name === 'Eduvate') {
+    if (b.name === 'Eduvate (CBSE)') {
       await ClassLevel.deleteMany({ boardId: b._id, name: '7' });
     }
 
@@ -134,11 +134,6 @@ export const importCurriculum = async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // APPEND/UPSERT: keep existing modules; upsert one per lesson by title.
-    const existingModules = await Module.find({ chapterId: chapter._id }).sort({ order: 1 });
-    const titleToModule = new Map(existingModules.map(m => [String(m.title).trim().toLowerCase(), m]));
-    let nextOrder = existingModules.length;
-
     // For each lesson in payload, create-or-replace a module under the chapter
     let totalItems = 0;
     let skippedItems = 0;
@@ -150,6 +145,11 @@ export const importCurriculum = async (req, res) => {
       { $setOnInsert: { chapterId: chapter._id, title: unitTitle, order: 1 } },
       { upsert: true, new: true }
     );
+
+    // APPEND/UPSERT: keep existing modules; upsert one per lesson by title, scoped to UNIT.
+    const existingModules = await Module.find({ unitId: unit._id }).sort({ order: 1 });
+    const titleToModule = new Map(existingModules.map(m => [String(m.title).trim().toLowerCase(), m]));
+    let nextOrder = existingModules.length;
 
     for (const lesson of payload.lessons) {
       let module = null;

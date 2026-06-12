@@ -12,21 +12,45 @@ import CurriculumItem from './models/CurriculumItem.js';
 import Subject from './models/Subject.js';
 import DefaultRevisionQuestion from './models/DefaultRevisionQuestion.js';
 
-const run = async () => {
-  try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log('Connected to DB');
+const processCsv = async (csvPath, chapter, subject) => {
+    const rawData = fs.readFileSync(csvPath, 'utf8');
+    const parsed = Papa.parse(rawData, { header: false, skipEmptyLines: true }).data;
+    
+    if (parsed.length === 0) return;
+    
+    const headerRow = parsed[0];
+    const newHeaders = [];
+    const counts = {};
+    for (let h of headerRow) {
+      const t = String(h).trim();
+      if (!counts[t]) { counts[t] = 1; newHeaders.push(t); }
+      else { newHeaders.push(`${t}_${counts[t]}`); counts[t]++; }
+    }
+    
+    const data = parsed.slice(1).map(row => {
+      const obj = {};
+      newHeaders.forEach((h, i) => { obj[h] = row[i]; });
+      return obj;
+    });
 
-    const chapter = await Chapter.findOne({ title: "Chapter 2: Diversity in the Living World" });
-    if (!chapter) throw new Error("Chapter not found");
+    // Group by units
+    const unitsMap = new Map();
+    for (const row of data) {
+      const unitTitle = String(row.Unit_title || row.Unit || '').trim();
+      if (!unitTitle) continue;
+      if (!unitsMap.has(unitTitle)) {
+        unitsMap.set(unitTitle, []);
+      }
+      unitsMap.get(unitTitle).push(row);
+    }
 
-    const subject = await Subject.findById(chapter.subjectId);
-    if (!subject) throw new Error("Subject not found");
-
-    const processUnit = async (unitTitle, csvPath) => {
+    for (const [unitTitle, rows] of unitsMap.entries()) {
       console.log(`\n=== Processing ${unitTitle} ===`);
-      const unit = await Unit.findOne({ chapterId: chapter._id, title: unitTitle });
-      if (!unit) throw new Error(`Unit not found: ${unitTitle}`);
+      const unit = await Unit.findOne({ chapterId: chapter._id, title: { $regex: new RegExp(`^${unitTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
+      if (!unit) {
+         console.error(`Unit not found: ${unitTitle}. Skipping...`);
+         continue;
+      }
 
       // Clear existing modules and items for this unit
       const existingModules = await Module.find({ unitId: unit._id });
@@ -37,13 +61,11 @@ const run = async () => {
       await DefaultRevisionQuestion.deleteMany({ unitId: unit._id });
       console.log(`Cleared existing modules and items for ${unitTitle}.`);
 
-      const data = Papa.parse(fs.readFileSync(csvPath, 'utf8'), { header: true, skipEmptyLines: true }).data;
-      
       // Pre-scan for difficult module blocks
       let difficultBlocks = 0;
       let lastLesson = null;
-      for (const row of data) {
-        const lt = String(row.lesson_title || '').trim();
+      for (const row of rows) {
+        const lt = String(row.Lesson_title || row.lesson_title || '').trim();
         if (lt && lt !== lastLesson) {
           if (/difficult module/i.test(lt)) difficultBlocks++;
           lastLesson = lt;
@@ -59,8 +81,8 @@ const run = async () => {
       let itemsCreated = 0;
       const titleCounts = {};
 
-      for (const row of data) {
-        const rawLessonTitle = String(row.lesson_title || '').trim();
+      for (const row of rows) {
+        const rawLessonTitle = String(row.Lesson_title || row.lesson_title || '').trim();
         if (!rawLessonTitle) continue; // Skip rows without lesson title
         
         // Handle new module block
@@ -92,12 +114,13 @@ const run = async () => {
         }
         
         // Prepare Item fields
-        let mappedType = String(row.type || '').trim().toLowerCase();
+        let mappedType = String(row.Type || row.type || '').trim().toLowerCase();
         if (mappedType === 'mcq') mappedType = 'multiple-choice';
         if (mappedType === 'fib') mappedType = 'fill-in-the-blank';
         if (mappedType === 're-arrange') mappedType = 'rearrange';
         if (mappedType === 'comic') mappedType = 'comic';
         if (mappedType === 'concept') mappedType = 'concept';
+        if (mappedType === 'statement') mappedType = 'concept'; // Important! Statements are concepts
         if (mappedType === 'descriptive') mappedType = 'descriptive';
         
         // Options
@@ -105,14 +128,14 @@ const run = async () => {
         const options = optionsRaw ? optionsRaw.split(',').map(o => o.trim()).filter(Boolean) : [];
         
         // Images (Strict filter by HTTP/HTTPS to avoid text labels like 'amphibians')
-        const imgKeys = Object.keys(row).filter(k => k.toLowerCase().includes('image'));
+        const imgKeys = Object.keys(row).filter(k => k.toLowerCase().includes('image') || k.toLowerCase().includes('image 1') || k.toLowerCase().includes('image 2'));
         const images = imgKeys
           .map(k => String(row[k] || '').trim())
           .filter(v => v && (v.startsWith('http://') || v.startsWith('https://') || v.startsWith('data:image')));
         
         const question = String(row.Question || row.question || '').trim();
-        const text = String(row['concept/statement'] || '').trim();
-        const answer = String(row.answer || '').trim();
+        const text = String(row.Statement || row.statement || row['concept/statement'] || '').trim();
+        const answer = String(row.Answer || row.answer || '').trim();
         
         let keywords = [];
         let modelAnswers = [];
@@ -170,11 +193,22 @@ const run = async () => {
       }
       
       console.log(`Successfully imported ${itemsCreated} items across ${moduleOrder} modules for ${unitTitle}.`);
-    };
+    }
+};
 
-    // Execute for both units
-    await processUnit("Unit 1: Plant Characteristics and Grouping", "D:\\Q&A Biodiversity - Unit 1 (5).csv");
-    await processUnit("Unit 2: Animal Movement, Habitats, and Adaptations", "D:\\Q&A Biodiversity - Unit 2 (3).csv");
+const run = async () => {
+  try {
+    await mongoose.connect(process.env.MONGO_URI);
+    console.log('Connected to DB');
+
+    const chapter = await Chapter.findOne({ title: { $regex: 'Chapter 2: Exploring Substances', $options: 'i' } });
+    if (!chapter) throw new Error("Chapter not found");
+
+    const subject = await Subject.findById(chapter.subjectId);
+    if (!subject) throw new Error("Subject not found");
+
+    const csvPath = "D:\\Exploring  Substances_ Acidic,  Basic, and Neutral - All (2).csv";
+    await processCsv(csvPath, chapter, subject);
 
   } catch (err) {
     console.error(err);

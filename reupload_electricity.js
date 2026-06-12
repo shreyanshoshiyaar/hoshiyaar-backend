@@ -118,6 +118,14 @@ const processCsv = async (csvPath, chapter, subject) => {
         const question = String(row.Question || row.question || '').trim();
         const text = String(row.Statement || row.statement || row['concept/statement'] || '').trim();
         const answer = String(row.Answer || row.answer || '').trim();
+        
+        let keywords = [];
+        let modelAnswers = [];
+        if (mappedType === 'descriptive') {
+           keywords = answer ? answer.split(',').map(k => k.trim()).filter(Boolean) : [];
+           modelAnswers = text ? [text] : [];
+        }
+        
         const reviseRaw = String(row['Revise?'] || row.Revise || row.revise || row['revise?'] || '').trim().toLowerCase();
         const revise = (reviseRaw === 'y' || reviseRaw === 'yes');
         
@@ -131,6 +139,8 @@ const processCsv = async (csvPath, chapter, subject) => {
           options: options,
           words: (mappedType === 'rearrange') ? options : undefined,
           answer: answer,
+          keywords: keywords,
+          modelAnswers: modelAnswers,
           revise: revise,
           imageUrl: images[0] || '',
           images: images
@@ -151,6 +161,8 @@ const processCsv = async (csvPath, chapter, subject) => {
             text: text,
             options: options,
             answer: answer,
+            keywords: keywords,
+            modelAnswers: modelAnswers,
             words: (mappedType === 'rearrange') ? options : undefined,
             images: images,
             order: itemOrder,
@@ -178,7 +190,7 @@ const run = async () => {
     const subject = await Subject.findById(chapter.subjectId);
     if (!subject) throw new Error("Subject not found");
 
-    const csvPath = "D:\\Electricity - all (2).csv";
+    const csvPath = "D:\\Electricity - all (3).csv";
     await processCsv(csvPath, chapter, subject);
 
   } catch (err) {

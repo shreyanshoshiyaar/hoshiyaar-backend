@@ -13,7 +13,25 @@ import Subject from './models/Subject.js';
 import DefaultRevisionQuestion from './models/DefaultRevisionQuestion.js';
 
 const processCsv = async (csvPath, chapter, subject) => {
-    const data = Papa.parse(fs.readFileSync(csvPath, 'utf8'), { header: true, skipEmptyLines: true }).data;
+    const rawData = fs.readFileSync(csvPath, 'utf8');
+    const parsed = Papa.parse(rawData, { header: false, skipEmptyLines: true }).data;
+    
+    if (parsed.length === 0) return;
+    
+    const headerRow = parsed[0];
+    const newHeaders = [];
+    const counts = {};
+    for (let h of headerRow) {
+      const t = String(h).trim();
+      if (!counts[t]) { counts[t] = 1; newHeaders.push(t); }
+      else { newHeaders.push(`${t}_${counts[t]}`); counts[t]++; }
+    }
+    
+    const data = parsed.slice(1).map(row => {
+      const obj = {};
+      newHeaders.forEach((h, i) => { obj[h] = row[i]; });
+      return obj;
+    });
 
     // Group by units
     const unitsMap = new Map();
@@ -28,9 +46,9 @@ const processCsv = async (csvPath, chapter, subject) => {
 
     for (const [unitTitle, rows] of unitsMap.entries()) {
       console.log(`\n=== Processing ${unitTitle} ===`);
-      const unit = await Unit.findOne({ chapterId: chapter._id, title: unitTitle });
+      const unit = await Unit.findOne({ chapterId: chapter._id, title: { $regex: new RegExp(`^${unitTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
       if (!unit) {
-         console.error(`Unit not found: ${unitTitle}`);
+         console.error(`Unit not found: ${unitTitle}. Skipping...`);
          continue;
       }
 
@@ -118,6 +136,14 @@ const processCsv = async (csvPath, chapter, subject) => {
         const question = String(row.Question || row.question || '').trim();
         const text = String(row.Statement || row.statement || row['concept/statement'] || '').trim();
         const answer = String(row.Answer || row.answer || '').trim();
+        
+        let keywords = [];
+        let modelAnswers = [];
+        if (mappedType === 'descriptive') {
+           keywords = answer ? answer.split(',').map(k => k.trim()).filter(Boolean) : [];
+           modelAnswers = text ? [text] : [];
+        }
+        
         const reviseRaw = String(row['Revise?'] || row.Revise || row.revise || row['revise?'] || '').trim().toLowerCase();
         const revise = (reviseRaw === 'y' || reviseRaw === 'yes');
         
@@ -131,6 +157,8 @@ const processCsv = async (csvPath, chapter, subject) => {
           options: options,
           words: (mappedType === 'rearrange') ? options : undefined,
           answer: answer,
+          keywords: keywords,
+          modelAnswers: modelAnswers,
           revise: revise,
           imageUrl: images[0] || '',
           images: images
@@ -151,6 +179,8 @@ const processCsv = async (csvPath, chapter, subject) => {
             text: text,
             options: options,
             answer: answer,
+            keywords: keywords,
+            modelAnswers: modelAnswers,
             words: (mappedType === 'rearrange') ? options : undefined,
             images: images,
             order: itemOrder,
@@ -171,18 +201,14 @@ const run = async () => {
     await mongoose.connect(process.env.MONGO_URI);
     console.log('Connected to DB');
 
-    // Case-insensitive regex match for chapter title
-    const chapter = await Chapter.findOne({ title: { $regex: 'Chapter 1: Measurement and motion', $options: 'i' } });
+    const chapter = await Chapter.findOne({ title: { $regex: 'Measurement and motion', $options: 'i' } });
     if (!chapter) throw new Error("Chapter not found");
 
     const subject = await Subject.findById(chapter.subjectId);
     if (!subject) throw new Error("Subject not found");
 
-    const csvPath1 = "D:\\Measurements and Motions - Unit 1 (3).csv";
-    const csvPath2 = "D:\\Measurements and Motions - Unit 2 (3).csv";
-    
-    await processCsv(csvPath1, chapter, subject);
-    await processCsv(csvPath2, chapter, subject);
+    await processCsv("D:\\Measurements and Motions - Unit 1 (3).csv", chapter, subject);
+    await processCsv("D:\\Measurements and Motions - Unit 2 (3).csv", chapter, subject);
 
   } catch (err) {
     console.error(err);

@@ -25,7 +25,12 @@ const generateSitemap = async () => {
       { url: '/', priority: '1.0', changefreq: 'daily' },
       { url: '/about', priority: '0.8', changefreq: 'monthly' },
       { url: '/contact', priority: '0.8', changefreq: 'monthly' },
-      { url: '/blogs', priority: '0.9', changefreq: 'daily' }
+      { url: '/blogs', priority: '0.9', changefreq: 'daily' },
+      { url: '/privacy-policy', priority: '0.5', changefreq: 'monthly' },
+      { url: '/terms-conditions', priority: '0.5', changefreq: 'monthly' },
+      { url: '/disclaimer', priority: '0.5', changefreq: 'monthly' },
+      { url: '/login', priority: '0.7', changefreq: 'monthly' },
+      { url: '/signup', priority: '0.7', changefreq: 'monthly' }
     ];
 
     staticRoutes.forEach(route => {
@@ -45,11 +50,20 @@ const generateSitemap = async () => {
 
     sitemap += `</urlset>`;
 
-    const outputPath = 'd:/hoshiyaar/hoshiyaar/Hoshiyaar-frontend-main/public/sitemap.xml';
-    fs.writeFileSync(outputPath, sitemap, 'utf8');
+    const publicPath = 'd:/hoshiyaar/hoshiyaar/Hoshiyaar-frontend-main/public/sitemap.xml';
+    const distPath = 'd:/hoshiyaar/hoshiyaar/Hoshiyaar-frontend-main/dist/sitemap.xml';
+    
+    fs.writeFileSync(publicPath, sitemap, 'utf8');
+    try {
+      if (fs.existsSync('d:/hoshiyaar/hoshiyaar/Hoshiyaar-frontend-main/dist')) {
+        fs.writeFileSync(distPath, sitemap, 'utf8');
+      }
+    } catch (e) {
+      console.log('Dist folder not found, skipping writing there.');
+    }
     
     console.log(`Sitemap generated successfully with ${staticRoutes.length + blogs.length + modules.length} URLs!`);
-    console.log(`Saved to: ${outputPath}`);
+    console.log(`Saved to: ${publicPath} and ${distPath}`);
 
   } catch (err) {
     console.error('Error generating sitemap:', err);

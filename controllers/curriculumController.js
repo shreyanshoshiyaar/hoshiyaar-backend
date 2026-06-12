@@ -640,3 +640,59 @@ export const completeLessons = async (req, res) => {
     return res.status(500).json({ message: 'Server Error' });
   }
 };
+
+// GET /api/curriculum/revision-counts?chapterId=...
+export const getRevisionCounts = async (req, res) => {
+  try {
+    const { chapterId } = req.query;
+    if (!chapterId) return res.status(400).json({ message: 'chapterId is required' });
+
+    const isValidId = (id) => id && /^[0-9a-fA-F]{24}$/.test(id);
+    if (!isValidId(chapterId)) {
+      return res.json({});
+    }
+
+    const modules = await Module.find({ chapterId }).select('_id unitId');
+    if (!modules.length) return res.json({});
+
+    const moduleIds = modules.map(m => m._id);
+
+    const items = await CurriculumItem.aggregate([
+      {
+        $match: {
+          moduleId: { $in: moduleIds },
+          $or: [
+            { type: 'youtube' },
+            { type: 'video' },
+            { type: 'comic' },
+            { type: 'concept', videoUrl: { $exists: true, $ne: '' } },
+            { type: 'concept', comicUrls: { $exists: true, $not: { $size: 0 } } },
+            { videoUrl: { $exists: true, $ne: null, $ne: '' } },
+            { comicUrls: { $exists: true, $not: { $size: 0 } } }
+          ]
+        }
+      },
+      {
+        $group: {
+          _id: '$moduleId',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const unitCounts = {};
+    for (const m of modules) {
+      const itemGroup = items.find(i => i._id.toString() === m._id.toString());
+      const count = itemGroup ? itemGroup.count : 0;
+      if (count > 0) {
+        const uId = m.unitId ? m.unitId.toString() : 'virtual_unit';
+        unitCounts[uId] = (unitCounts[uId] || 0) + count;
+      }
+    }
+
+    return res.json(unitCounts);
+  } catch (err) {
+    console.error('[getRevisionCounts] Error:', err);
+    return res.status(500).json({ message: 'Server Error' });
+  }
+};

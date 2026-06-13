@@ -9,9 +9,19 @@ import Unit from '../models/Unit.js';
 import DefaultRevisionQuestion from '../models/DefaultRevisionQuestion.js';
 
 // GET /api/curriculum/boards
-export const listBoards = async (_req, res) => {
+export const listBoards = async (req, res) => {
   try {
-    const boards = await Board.find({}).sort({ name: 1 });
+    const { classLevel } = req.query;
+    let boards = await Board.find({}).sort({ name: 1 });
+    
+    if (classLevel) {
+      const classLevels = await ClassLevel.find({ name: String(classLevel) });
+      if (classLevels.length > 0) {
+        const validBoardIds = classLevels.map(c => c.boardId.toString());
+        boards = boards.filter(b => validBoardIds.includes(b._id.toString()));
+      }
+    }
+    
     return res.json(boards);
   } catch (err) {
     return res.status(500).json({ message: 'Server Error' });

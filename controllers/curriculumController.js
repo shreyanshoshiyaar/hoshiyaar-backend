@@ -148,6 +148,7 @@ export const importCurriculum = async (req, res) => {
     let totalItems = 0;
     let skippedItems = 0;
     const perLesson = [];
+    const allWarnings = [];
     // Create/find the Unit (under this chapter) if unit title provided
     const unitTitle = payload.unit_title || 'Unit';
     const unit = await Unit.findOneAndUpdate(
@@ -197,6 +198,7 @@ export const importCurriculum = async (req, res) => {
       let order = 0;
       let createdForThisLesson = 0;
       const processedIds = [];
+      const warnings = [];
       for (const c of (lesson.concepts || [])) {
         order += 1;
         const base = { moduleId: module._id, order, imageUrl: c.imageUrl || c.image || undefined, images: Array.isArray(c.images) ? c.images.filter(Boolean) : [] };
@@ -245,7 +247,12 @@ export const importCurriculum = async (req, res) => {
           const words = Array.isArray(c.words) ? c.words : (Array.isArray(c.options) ? c.options : []);
           Object.assign(updateData, { type: 'rearrange', question: c.question || '', words, options: words, answer: c.answer });
         } else if (isMCQ) {
-          Object.assign(updateData, { type: 'multiple-choice', question: c.question || '', options: (c.options || []).filter(Boolean), answer: c.answer });
+          const options = (c.options || []).filter(Boolean);
+          if (c.answer && !options.includes(c.answer)) {
+            options.push(c.answer); // Auto-fix: append answer to options if missing
+            warnings.push(`MCQ Question "${c.question || '(No Question Text)'}": Correct answer "${c.answer}" was missing from options. It has been auto-appended.`);
+          }
+          Object.assign(updateData, { type: 'multiple-choice', question: c.question || '', options, answer: c.answer });
         } else if (isFIB) {
           Object.assign(updateData, { type: 'fill-in-the-blank', question: c.question || '', answer: c.answer });
         } else if (isDescriptive) {
@@ -313,9 +320,10 @@ export const importCurriculum = async (req, res) => {
       }
 
       perLesson.push({ lesson: lesson.lesson_title, items: createdForThisLesson });
+      allWarnings.push(...warnings);
     }
 
-    return res.status(201).json({ board: board.name, class: classLevel.name, subject: subject.name, chapter: chapter.title, importedItems: totalItems, skipped: skippedItems, perLesson });
+    return res.status(201).json({ board: board.name, class: classLevel.name, subject: subject.name, chapter: chapter.title, importedItems: totalItems, skipped: skippedItems, perLesson, warnings: allWarnings });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server Error' });

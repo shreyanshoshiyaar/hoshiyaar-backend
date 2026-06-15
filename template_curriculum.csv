@@ -1,0 +1,8 @@
+board,class,subject,chapter,unit_title,lesson_title,type,concept,question,options,answer,keyword,revise,image1,image2,image3
+"CBSE","6","Science","Chapter 1: Introduction","Unit 1: Intro","Basics","concept","This is a basic concept explaining a topic.",,,,,"N","https://example.com/bg1.png",,
+"CBSE","6","Science","Chapter 1: Introduction","Unit 1: Intro","Basics","multiple-choice",,"What is the capital of France?","Paris, London, Berlin, Rome","Paris",,"Y",,,
+"CBSE","6","Science","Chapter 1: Introduction","Unit 1: Intro","Basics","fill-in-the-blank",,"The largest planet is ________.",,"Jupiter",,"N",,,
+"CBSE","6","Science","Chapter 1: Introduction","Unit 1: Intro","Basics","rearrange",,"Arrange the words to form a sentence.","dog, the, barked","the, dog, barked",,"Y",,,
+"CBSE","6","Science","Chapter 1: Introduction","Unit 1: Intro","Basics","descriptive","A mammal is an animal that breathes air and has hair.","What is a mammal?","mammal, animal, hair, air",,"mammal, animal, hair, air","Y",,,
+"CBSE","6","Science","Chapter 1: Introduction","Unit 1: Intro","Basics","video","Watch this video to understand the topic.","https://youtube.com/watch?v=example",,,,,"N",,,
+"CBSE","6","Science","Chapter 1: Introduction","Unit 1: Intro","Basics","comic","This is a comic slide.",,,,,"N","https://example.com/comic1.png","https://example.com/comic2.png",

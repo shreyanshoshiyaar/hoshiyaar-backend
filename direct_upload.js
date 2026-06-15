@@ -51,6 +51,12 @@ const run = async () => {
       const images = imgKeys.map(k => String(row[k] || '').trim()).filter(Boolean);
       
       const question = String(row.Question || row.question || '').trim();
+      const answerStr = String(row.answer || '').trim();
+
+      if (mappedType === 'multiple-choice' && answerStr && !options.includes(answerStr)) {
+        console.warn(`[Warning] MCQ Question "${question}": Correct answer "${answerStr}" was missing from options. Auto-fixing...`);
+        options.push(answerStr);
+      }
       
       const newItem = new CurriculumItem({
         moduleId: mod1._id,
@@ -60,7 +66,7 @@ const run = async () => {
         question: question,
         options: options,
         words: (mappedType === 'rearrange') ? options : undefined,
-        answer: String(row.answer || '').trim(),
+        answer: answerStr,
         revise: String(row['Revise?'] || row.Revise || '').trim(),
         imageUrl: images[0] || '',
         images
@@ -97,6 +103,12 @@ const run = async () => {
       const images = imgKeys.map(k => String(row[k] || '').trim()).filter(Boolean);
       
       const question = String(row.Question || row.question || '').trim();
+      const answerStr = String(row.answer || '').trim();
+
+      if (mappedType === 'multiple-choice' && answerStr && !options.includes(answerStr)) {
+        console.warn(`[Warning] MCQ Question "${question}": Correct answer "${answerStr}" was missing from options. Auto-fixing...`);
+        options.push(answerStr);
+      }
       
       const newItem = new CurriculumItem({
         moduleId: mod2._id,
@@ -106,7 +118,7 @@ const run = async () => {
         question: question,
         options: options,
         words: (mappedType === 'rearrange') ? options : undefined,
-        answer: String(row.answer || '').trim(),
+        answer: answerStr,
         revise: String(row.Revise || row['Revise?'] || '').trim(),
         imageUrl: images[0] || '',
         images

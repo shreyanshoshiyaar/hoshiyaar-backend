@@ -82,8 +82,14 @@ async function importCsv() {
       itemDoc.question = textOrQuestion;
       itemDoc.answer = answer;
       if (options.length > 0) {
+        if (type === 'multiple-choice' && answer && !options.includes(answer)) {
+          console.warn(`[Warning] MCQ Question "${textOrQuestion}": Correct answer "${answer}" was missing from options. Auto-fixing...`);
+          options.push(answer);
+        }
         itemDoc.options = options;
         if (type === 'rearrange') itemDoc.words = options;
+      } else if (type === 'multiple-choice' && answer) {
+        itemDoc.options = [answer];
       }
     }
 

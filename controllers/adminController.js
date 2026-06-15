@@ -1,4 +1,5 @@
 import User from '../models/User.js';
+import Module from '../models/Module.js';
 import jwt from 'jsonwebtoken';
 
 const generateToken = (id, role) => {
@@ -65,9 +66,19 @@ export const getUsersAnalytics = async (req, res) => {
 
       let useTime = 0;
       let lastActive = user.updatedAt || user.createdAt || new Date();
+      let lastSessionModuleId = null;
 
       if (timestamps.length > 0) {
         lastActive = new Date(timestamps[timestamps.length - 1]);
+        
+        // Find last session moduleId by looking at the chronologically last valid entry
+        const sortedEntries = ledgerEntries
+          .filter(e => e.attemptedAt)
+          .sort((a, b) => new Date(a.attemptedAt).getTime() - new Date(b.attemptedAt).getTime());
+        if (sortedEntries.length > 0) {
+          lastSessionModuleId = sortedEntries[sortedEntries.length - 1].moduleId;
+        }
+
         let sessionStart = timestamps[0];
         let sessionEnd = timestamps[0];
         const maxGap = 15 * 60 * 1000; // 15-minute sliding window
@@ -116,7 +127,25 @@ export const getUsersAnalytics = async (req, res) => {
         chaptersProgress: user.chaptersProgress || [],
         createdAt: user.createdAt,
         lastActive,
+        lastSessionModuleId,
       };
+    });
+
+    // 2.5 Resolve Module Titles for lastSessionLocation
+    const uniqueModuleIds = [...new Set(users.map(u => u.lastSessionModuleId).filter(Boolean))];
+    const modulesData = await Module.find({ _id: { $in: uniqueModuleIds } }, 'title').lean();
+    const moduleMap = {};
+    modulesData.forEach(m => {
+      moduleMap[m._id.toString()] = m.title;
+    });
+
+    users.forEach(u => {
+      if (u.lastSessionModuleId && moduleMap[u.lastSessionModuleId]) {
+        u.lastSessionLocation = moduleMap[u.lastSessionModuleId];
+      } else {
+        u.lastSessionLocation = 'N/A';
+      }
+      delete u.lastSessionModuleId; // remove internal ID to keep response clean
     });
 
     // 3. Aggregate top-level dashboard metrics

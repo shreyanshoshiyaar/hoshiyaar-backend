@@ -82,6 +82,9 @@ async function run() {
     let moduleTitle = getCol(row, ['lesson_title', 'module']);
     let rawType = getCol(row, ['type']);
     
+    const isRowEmpty = Object.values(row).every(val => !String(val).trim());
+    if (isRowEmpty) continue;
+
     if (!chapterTitle) {
       console.error(`[Error] Row ${rowNum}: Missing 'chapter' title.`);
       errors++;

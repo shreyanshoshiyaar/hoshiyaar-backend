@@ -80,8 +80,13 @@ const htmlContent = `
 
 <div style="background-color: #f0fdf4; padding: 1rem; border: 1px solid #bbf7d0; border-radius: 0.5rem; margin-bottom: 1.5rem;">
   <div style="font-weight: bold; color: #16a34a; margin-bottom: 0.5rem;">✅ Exam-ready answer</div>
-  <p style="margin: 0 0 0.5rem 0;"><strong>Q: When does a person have a fever?</strong></p>
-  <p style="margin: 0; color: #14532d;">A: A person is said to have a fever when their body temperature rises above the normal value of 37°C (98.6°F). A temperature of 38°C or above usually indicates fever.</p>
+  <p style="margin: 0 0 0.5rem 0; font-weight: 600;">When does a person have a fever?</p>
+  <details style="margin-top: 0.5rem;">
+    <summary style="cursor: pointer; color: #16a34a; font-weight: bold; outline: none; margin-bottom: 0.5rem;">Show Answer</summary>
+    <div style="padding-top: 0.5rem; border-top: 1px solid #bbf7d0; color: #14532d;">
+      A person is said to have a fever when their body temperature rises above the normal value of 37°C (98.6°F). A temperature of 38°C or above usually indicates fever.
+    </div>
+  </details>
 </div>
 
 <h2>Why Does the Body Maintain a Constant Temperature?</h2>
@@ -102,8 +107,13 @@ const htmlContent = `
 
 <div style="background-color: #f0fdf4; padding: 1rem; border: 1px solid #bbf7d0; border-radius: 0.5rem; margin-bottom: 1.5rem;">
   <div style="font-weight: bold; color: #16a34a; margin-bottom: 0.5rem;">✅ Exam-ready answer</div>
-  <p style="margin: 0 0 0.5rem 0;"><strong>Q: Why is the range of a clinical thermometer 35°C to 42°C?</strong></p>
-  <p style="margin: 0; color: #14532d;">A: The range of a clinical thermometer is 35°C to 42°C because this covers the complete range of possible human body temperatures — from dangerously low (35°C) to dangerously high fever (42°C). A normal body temperature of 37°C falls well within this range.</p>
+  <p style="margin: 0 0 0.5rem 0; font-weight: 600;">Why is the range of a clinical thermometer 35°C to 42°C?</p>
+  <details style="margin-top: 0.5rem;">
+    <summary style="cursor: pointer; color: #16a34a; font-weight: bold; outline: none; margin-bottom: 0.5rem;">Show Answer</summary>
+    <div style="padding-top: 0.5rem; border-top: 1px solid #bbf7d0; color: #14532d;">
+      The range of a clinical thermometer is 35°C to 42°C because this covers the complete range of possible human body temperatures — from dangerously low (35°C) to dangerously high fever (42°C). A normal body temperature of 37°C falls well within this range.
+    </div>
+  </details>
 </div>
 
 <h2>How Body Temperature Is Measured</h2>
@@ -147,43 +157,98 @@ const htmlContent = `
 </div>
 
 <h2>Exam-Ready Answers</h2>
-<div style="background-color: #f0fdf4; padding: 1rem; border: 1px solid #bbf7d0; border-radius: 0.5rem; margin-bottom: 1rem;">
-  <div style="font-weight: bold; color: #16a34a; margin-bottom: 0.5rem;">✅ Fill in the blank</div>
-  <p style="margin: 0 0 0.5rem 0;"><strong>Q: The normal temperature of the human body is ______.</strong></p>
-  <p style="margin: 0; color: #14532d;">A: 37°C or 98.6°F</p>
+
+<div class="interactive-fitb" data-answer="37°c,98.6°f,37 c,98.6 f,37° c,98.6° f,37,98.6" data-display="37°C or 98.6°F" style="background-color: #f0fdf4; padding: 1.5rem; border: 1px solid #bbf7d0; border-radius: 0.5rem; margin-bottom: 1.5rem;">
+  <div style="font-weight: bold; color: #16a34a; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+    <span>✏️</span> Fill in the blank
+  </div>
+  <p style="margin: 0 0 1rem 0; font-size: 1.125rem; font-weight: 600; color: #14532d;">The normal temperature of the human body is <input type="text" placeholder="Type here..." style="padding: 0.25rem 0.5rem; border: 2px solid #cbd5e1; border-radius: 0.375rem; width: 120px; outline: none; margin: 0 0.25rem;" />.</p>
+  <button style="background: #16a34a; color: white; font-weight: bold; padding: 0.5rem 1rem; border-radius: 0.375rem; border: none; cursor: pointer; transition: all 0.2s;">Check Answer</button>
+  <div class="feedback hidden" style="margin-top: 1rem;"></div>
 </div>
-<div style="background-color: #f0fdf4; padding: 1rem; border: 1px solid #bbf7d0; border-radius: 0.5rem; margin-bottom: 1rem;">
-  <div style="font-weight: bold; color: #16a34a; margin-bottom: 0.5rem;">✅ 2-mark answer</div>
-  <p style="margin: 0 0 0.5rem 0;"><strong>Q: What is the normal temperature of the human body? What does it mean if the temperature is above this?</strong></p>
-  <p style="margin: 0; color: #14532d;">A: The normal temperature of the human body is 37°C or 98.6°F. If the body temperature rises above 37°C — typically to 38°C or higher — it is called fever. Fever usually indicates that the body is fighting an infection or illness.</p>
+
+<div class="interactive-descriptive" style="background-color: #f0fdf4; padding: 1.5rem; border: 1px solid #bbf7d0; border-radius: 0.5rem; margin-bottom: 1.5rem;">
+  <div style="font-weight: bold; color: #16a34a; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+    <span>✍️</span> 2-mark answer
+  </div>
+  <p style="margin: 0 0 1rem 0; font-size: 1.125rem; font-weight: 600; color: #14532d;">What is the normal temperature of the human body? What does it mean if the temperature is above this?</p>
+  <textarea rows="3" placeholder="Type your answer here..." style="width: 100%; padding: 0.75rem; border: 2px solid #cbd5e1; border-radius: 0.5rem; margin-bottom: 1rem; outline: none; resize: vertical; font-family: inherit;"></textarea>
+  <button style="background: #16a34a; color: white; font-weight: bold; padding: 0.5rem 1rem; border-radius: 0.375rem; border: none; cursor: pointer; transition: all 0.2s;">Compare Answer</button>
+  <div class="feedback hidden" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed #bbf7d0; color: #14532d;">
+    <strong>Correct Answer:</strong> The normal temperature of the human body is 37°C or 98.6°F. If the body temperature rises above 37°C — typically to 38°C or higher — it is called fever. Fever usually indicates that the body is fighting an infection or illness.
+  </div>
 </div>
-<div style="background-color: #f0fdf4; padding: 1rem; border: 1px solid #bbf7d0; border-radius: 0.5rem; margin-bottom: 1rem;">
-  <div style="font-weight: bold; color: #16a34a; margin-bottom: 0.5rem;">✅ 1-mark answer</div>
-  <p style="margin: 0 0 0.5rem 0;"><strong>Q: What is the upper limit of a clinical thermometer and why?</strong></p>
-  <p style="margin: 0; color: #14532d;">A: The upper limit of a clinical thermometer is 42°C. This is because a human body temperature above 42°C is extremely dangerous and would require emergency medical care — so no higher range is needed.</p>
+
+<div class="interactive-descriptive" style="background-color: #f0fdf4; padding: 1.5rem; border: 1px solid #bbf7d0; border-radius: 0.5rem; margin-bottom: 1.5rem;">
+  <div style="font-weight: bold; color: #16a34a; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+    <span>✍️</span> 1-mark answer
+  </div>
+  <p style="margin: 0 0 1rem 0; font-size: 1.125rem; font-weight: 600; color: #14532d;">What is the upper limit of a clinical thermometer and why?</p>
+  <textarea rows="3" placeholder="Type your answer here..." style="width: 100%; padding: 0.75rem; border: 2px solid #cbd5e1; border-radius: 0.5rem; margin-bottom: 1rem; outline: none; resize: vertical; font-family: inherit;"></textarea>
+  <button style="background: #16a34a; color: white; font-weight: bold; padding: 0.5rem 1rem; border-radius: 0.375rem; border: none; cursor: pointer; transition: all 0.2s;">Compare Answer</button>
+  <div class="feedback hidden" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed #bbf7d0; color: #14532d;">
+    <strong>Correct Answer:</strong> The upper limit of a clinical thermometer is 42°C. This is because a human body temperature above 42°C is extremely dangerous and would require emergency medical care — so no higher range is needed.
+  </div>
+</div>
+
+<div class="interactive-mcq" data-answer="B" style="background-color: #f0fdf4; padding: 1.5rem; border: 1px solid #bbf7d0; border-radius: 0.5rem; margin-bottom: 1.5rem;">
+  <div style="font-weight: bold; color: #16a34a; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+    <span>🎯</span> Multiple Choice
+  </div>
+  <p style="margin: 0 0 1rem 0; font-size: 1.125rem; font-weight: 600; color: #14532d;">Which thermometer should NEVER be used to measure human body temperature?</p>
+  <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem;">
+    <button class="mcq-option bg-white text-gray-700 border-gray-200" data-option="A" style="padding: 0.75rem 1rem; border: 2px solid; border-radius: 0.5rem; text-align: left; font-weight: 600; cursor: pointer; transition: all 0.2s;">A. Digital thermometer</button>
+    <button class="mcq-option bg-white text-gray-700 border-gray-200" data-option="B" style="padding: 0.75rem 1rem; border: 2px solid; border-radius: 0.5rem; text-align: left; font-weight: 600; cursor: pointer; transition: all 0.2s;">B. Laboratory thermometer</button>
+    <button class="mcq-option bg-white text-gray-700 border-gray-200" data-option="C" style="padding: 0.75rem 1rem; border: 2px solid; border-radius: 0.5rem; text-align: left; font-weight: 600; cursor: pointer; transition: all 0.2s;">C. Clinical thermometer</button>
+  </div>
+  <div class="feedback hidden" style="margin-top: 1rem;"></div>
 </div>
 
 <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e2e8f0;">
 
 <h2>Frequently Asked Questions</h2>
 <div style="margin-bottom: 1.5rem;">
-  <p><strong>What is the normal temperature of the human body?</strong><br>
-  The normal temperature of the human body is 37°C or 98.6°F.</p>
+  <details style="margin-bottom: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.5rem;">
+    <summary style="cursor: pointer; padding: 1rem; font-weight: bold; outline: none; color: #0f172a;">What is the normal temperature of the human body?</summary>
+    <div style="padding: 0 1rem 1rem 1rem; color: #475569;">
+      The normal temperature of the human body is 37°C or 98.6°F.
+    </div>
+  </details>
   
-  <p><strong>What temperature is considered fever?</strong><br>
-  A temperature above 37°C is generally considered elevated. A reading of 38°C or above is typically considered a fever and may indicate that the body is fighting an infection.</p>
+  <details style="margin-bottom: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.5rem;">
+    <summary style="cursor: pointer; padding: 1rem; font-weight: bold; outline: none; color: #0f172a;">What temperature is considered fever?</summary>
+    <div style="padding: 0 1rem 1rem 1rem; color: #475569;">
+      A temperature above 37°C is generally considered elevated. A reading of 38°C or above is typically considered a fever and may indicate that the body is fighting an infection.
+    </div>
+  </details>
   
-  <p><strong>Which thermometer is used to measure body temperature?</strong><br>
-  A clinical thermometer is used to measure body temperature. Its range is 35°C to 42°C, which covers all possible human body temperatures from dangerously low to dangerously high.</p>
+  <details style="margin-bottom: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.5rem;">
+    <summary style="cursor: pointer; padding: 1rem; font-weight: bold; outline: none; color: #0f172a;">Which thermometer is used to measure body temperature?</summary>
+    <div style="padding: 0 1rem 1rem 1rem; color: #475569;">
+      A clinical thermometer is used to measure body temperature. Its range is 35°C to 42°C, which covers all possible human body temperatures from dangerously low to dangerously high.
+    </div>
+  </details>
   
-  <p><strong>Why is the range of a clinical thermometer 35°C to 42°C?</strong><br>
-  This range is chosen because it covers the complete spectrum of human body temperatures. 35°C marks dangerously low body temperature (hypothermia), and 42°C marks dangerously high fever. Normal body temperature (37°C) falls comfortably in the middle.</p>
+  <details style="margin-bottom: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.5rem;">
+    <summary style="cursor: pointer; padding: 1rem; font-weight: bold; outline: none; color: #0f172a;">Why is the range of a clinical thermometer 35°C to 42°C?</summary>
+    <div style="padding: 0 1rem 1rem 1rem; color: #475569;">
+      This range is chosen because it covers the complete spectrum of human body temperatures. 35°C marks dangerously low body temperature (hypothermia), and 42°C marks dangerously high fever. Normal body temperature (37°C) falls comfortably in the middle.
+    </div>
+  </details>
   
-  <p><strong>Why does the body maintain a constant temperature?</strong><br>
-  The body maintains a constant temperature of around 37°C because this is the optimum temperature for the body's biological and chemical processes to function correctly. When you are ill, this temperature may rise (fever) as the body responds to infection.</p>
+  <details style="margin-bottom: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.5rem;">
+    <summary style="cursor: pointer; padding: 1rem; font-weight: bold; outline: none; color: #0f172a;">Why does the body maintain a constant temperature?</summary>
+    <div style="padding: 0 1rem 1rem 1rem; color: #475569;">
+      The body maintains a constant temperature of around 37°C because this is the optimum temperature for the body's biological and chemical processes to function correctly. When you are ill, this temperature may rise (fever) as the body responds to infection.
+    </div>
+  </details>
   
-  <p><strong>Is 37°C and 98.6°F the same temperature?</strong><br>
-  Yes. 37°C and 98.6°F are the same temperature — just expressed in different units. Celsius and Fahrenheit are two different scales for measuring temperature. In India, Celsius is the standard scale used.</p>
+  <details style="margin-bottom: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.5rem;">
+    <summary style="cursor: pointer; padding: 1rem; font-weight: bold; outline: none; color: #0f172a;">Is 37°C and 98.6°F the same temperature?</summary>
+    <div style="padding: 0 1rem 1rem 1rem; color: #475569;">
+      Yes. 37°C and 98.6°F are the same temperature — just expressed in different units. Celsius and Fahrenheit are two different scales for measuring temperature. In India, Celsius is the standard scale used.
+    </div>
+  </details>
 </div>
 `;
 
@@ -197,7 +262,9 @@ async function upload() {
       existing.content = htmlContent;
       existing.excerpt = excerpt;
       existing.tags = tags;
-      existing.image = 'https://res.cloudinary.com/dcxlzfyfp/image/upload/v1779867323/img-to-link/wslwzocccttlxjc6ixjo.png';
+      existing.slug = 'normal-human-body-temperature-class-6';
+      existing.category = 'temperature';
+      existing.image = 'https://res.cloudinary.com/dcxlzfyfp/image/upload/v1781703169/img-to-link/l7svv8nxinydal5l5zxv.webp';
       await existing.save();
       console.log('✅ Blog updated successfully');
     } else {
@@ -206,8 +273,10 @@ async function upload() {
         excerpt,
         content: htmlContent,
         author: 'Hoshiyaar',
+        slug: 'normal-human-body-temperature-class-6',
+        category: 'temperature',
         tags,
-        image: 'https://res.cloudinary.com/dcxlzfyfp/image/upload/v1779867323/img-to-link/wslwzocccttlxjc6ixjo.png'
+        image: 'https://res.cloudinary.com/dcxlzfyfp/image/upload/v1781703169/img-to-link/l7svv8nxinydal5l5zxv.webp'
       });
       await newBlog.save();
       console.log('✅ New blog created successfully');

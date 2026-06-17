@@ -821,6 +821,26 @@ export const deleteUser = async (req, res) => {
   }
 };
 
+// @desc    Update user activity and FCM token
+// @route   POST /api/auth/update-activity
+// @access  Public
+export const updateActivity = async (req, res) => {
+  const { userId, fcmToken } = req.body;
+  if (!userId) return res.status(400).json({ message: 'userId is required' });
+
+  try {
+    const updateData = { lastActiveAt: new Date() };
+    if (fcmToken) updateData.fcmToken = fcmToken;
+
+    const user = await User.findByIdAndUpdate(userId, updateData, { new: true });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    res.json({ message: 'Activity updated', lastActiveAt: user.lastActiveAt });
+  } catch (error) {
+    res.status(500).json({ message: `Server Error: ${error.message}` });
+  }
+};
+
 // @desc    Reset User Password
 // @route   POST /api/auth/reset-password
 // @access  Public

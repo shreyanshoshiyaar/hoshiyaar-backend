@@ -245,7 +245,12 @@ async function run() {
 
   const clearedModules = new Set();
   const oldItemsMap = {};
-  const orderCounters = {};
+  const orderCounters = {}; // moduleId -> next question order
+  const moduleOrderCounters = {}; // unitId -> next module order
+  const seenModules = new Set(); 
+  const unitOrderCounters = {}; // chapterId -> next unit order
+  const seenUnits = new Set();
+
   let uploadedCount = 0;
   let reviseCount = 0;
 
@@ -286,13 +291,37 @@ async function run() {
     const chapter = hierarchyCache.chapters[chapKey];
 
     // Resolve Unit
+    const chapIdStr = String(chapter._id);
+    if (!unitOrderCounters[chapIdStr]) unitOrderCounters[chapIdStr] = 1;
+    
     let unit = await Unit.findOne({ chapterId: chapter._id, title: item.unitTitle });
-    if (!unit) unit = await Unit.create({ chapterId: chapter._id, title: item.unitTitle, order: 1 });
+    if (!unit) {
+      unit = await Unit.create({ chapterId: chapter._id, title: item.unitTitle, order: unitOrderCounters[chapIdStr] });
+    } else if (!seenUnits.has(String(unit._id))) {
+      unit.order = unitOrderCounters[chapIdStr];
+      await unit.save();
+    }
+    
+    if (!seenUnits.has(String(unit._id))) {
+      seenUnits.add(String(unit._id));
+      unitOrderCounters[chapIdStr]++;
+    }
 
     // Resolve Module
+    const unitIdStr = String(unit._id);
+    if (!moduleOrderCounters[unitIdStr]) moduleOrderCounters[unitIdStr] = 1;
+
     let mod = await Module.findOne({ chapterId: chapter._id, unitId: unit._id, title: item.moduleTitle });
     if (!mod) {
-      mod = await Module.create({ chapterId: chapter._id, unitId: unit._id, title: item.moduleTitle, order: 99 });
+      mod = await Module.create({ chapterId: chapter._id, unitId: unit._id, title: item.moduleTitle, order: moduleOrderCounters[unitIdStr] });
+    } else if (!seenModules.has(String(mod._id))) {
+      mod.order = moduleOrderCounters[unitIdStr];
+      await mod.save();
+    }
+
+    if (!seenModules.has(String(mod._id))) {
+      seenModules.add(String(mod._id));
+      moduleOrderCounters[unitIdStr]++;
     }
 
     const modIdStr = String(mod._id);

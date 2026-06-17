@@ -17,6 +17,7 @@ import whatsappRoutes from './routes/whatsappRoutes.js';
 import Subject from './models/Subject.js';
 import ClassLevel from './models/ClassLevel.js';
 import User from './models/User.js';
+import { initFirebase, startInactivityCron } from './services/notificationService.js';
 
 // Load environment variables from .env file
 config();
@@ -32,6 +33,12 @@ if (process.env.CLOUDINARY_CLOUD_NAME) {
 
 // Connect to the database
 connectDB();
+
+// Initialize Firebase Admin for Push Notifications
+initFirebase();
+
+// Start the Inactivity Check Cron Job
+startInactivityCron();
 
 const app = express();
 

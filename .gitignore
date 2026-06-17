@@ -3,3 +3,6 @@ Dependencies
 
 Environment variables
 .env
+
+Secrets
+config/firebase-service-account.json

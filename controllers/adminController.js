@@ -120,6 +120,7 @@ export const getUsersAnalytics = async (req, res) => {
         classLevel: user.classLevel || 'Not Specified',
         isGuest: !!user.isGuest,
         onboardingCompleted: !!user.onboardingCompleted,
+        platform: user.platform || 'unknown',
         totalPoints: user.totalPoints || 0,
         useTime,
         accuracy,
@@ -226,8 +227,20 @@ export const getUsersAnalytics = async (req, res) => {
           timelineMap[activeDate].activeUsers += 1;
         }
       }
-    });
     const activeTimeline = Object.values(timelineMap);
+
+    // Platform Distribution
+    const platformMap = { web: 0, android: 0, ios: 0, unknown: 0 };
+    users.forEach(u => {
+      const p = u.platform || 'unknown';
+      if (platformMap[p] !== undefined) platformMap[p]++;
+    });
+    const platformDistribution = Object.keys(platformMap)
+      .filter(k => platformMap[k] > 0)
+      .map(k => ({
+        name: k.charAt(0).toUpperCase() + k.slice(1),
+        value: platformMap[k]
+      }));
 
     res.json({
       success: true,
@@ -236,6 +249,7 @@ export const getUsersAnalytics = async (req, res) => {
         gradeDistribution,
         schoolDistribution,
         activeTimeline,
+        platformDistribution,
       },
       users,
     });
@@ -243,4 +257,3 @@ export const getUsersAnalytics = async (req, res) => {
     res.status(500).json({ message: `Server Error: ${error.message}` });
   }
 };
-

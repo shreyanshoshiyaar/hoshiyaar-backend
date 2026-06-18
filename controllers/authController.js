@@ -163,7 +163,7 @@ export const verifyOtp = async (req, res) => {
 // @route   POST /api/auth/register
 // @access  Public
 export const registerUser = async (req, res) => {
-  const { username, name, email = null, phone = null, password = null, age, dateOfBirth, classLevel = null, board = null, classTitle = null, subject = null, chapter = null } = req.body;
+  const { username, name, email = null, phone = null, password = null, age, dateOfBirth, classLevel = null, board = null, classTitle = null, subject = null, chapter = null, platform = 'unknown' } = req.body;
 
   try {
     // Ensure unique username
@@ -231,6 +231,7 @@ export const registerUser = async (req, res) => {
       chapterId: chapterDoc ? chapterDoc._id : null,
       phone: phone || null,
       password: password || null,
+      platform,
       // Show onboarding after signup until the learner completes selections
       // Mark onboarding complete only if board, subject, and chapter are present
       onboardingCompleted: !!((board || boardDoc) && (subject || subjectDoc) && (chapter || chapterDoc)),

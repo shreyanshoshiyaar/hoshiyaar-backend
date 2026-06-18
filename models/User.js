@@ -115,6 +115,11 @@ const userSchema = mongoose.Schema(
       enum: ['user', 'admin'],
       default: 'user'
     },
+    platform: {
+      type: String,
+      enum: ['web', 'android', 'ios', 'unknown'],
+      default: 'unknown'
+    },
     fcmToken: {
       type: String,
       default: null

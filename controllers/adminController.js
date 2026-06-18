@@ -227,6 +227,8 @@ export const getUsersAnalytics = async (req, res) => {
           timelineMap[activeDate].activeUsers += 1;
         }
       }
+    });
+
     const activeTimeline = Object.values(timelineMap);
 
     // Platform Distribution

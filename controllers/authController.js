@@ -19,13 +19,26 @@ const generateToken = (id, role) => {
 // @route   POST /api/auth/send-otp
 // @access  Public
 export const sendOtp = async (req, res) => {
-  const { phone } = req.body;
+  const { phone, type } = req.body;
 
   if (!phone) {
     return res.status(400).json({ message: 'Phone number is required' });
   }
 
   try {
+    const User = (await import('../models/User.js')).default;
+    
+    if (type === 'signup') {
+      const existingUser = await User.findOne({ phone });
+      if (existingUser) {
+        return res.status(400).json({ message: 'An account with this phone number already exists. Please log in.' });
+      }
+    } else if (type === 'forgot_password') {
+      const existingUser = await User.findOne({ phone });
+      if (!existingUser) {
+        return res.status(400).json({ message: 'No account found with this phone number.' });
+      }
+    }
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     let rateLimit = await OtpRateLimit.findOne({ phone });
 

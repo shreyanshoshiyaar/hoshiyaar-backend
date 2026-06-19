@@ -71,24 +71,10 @@ export const sendOtp = async (req, res) => {
 
     const payload = {
       apiKey: AISENSY_API_KEY,
-      campaignName: 'login_otp',
+      campaignName: process.env.AISENSY_CAMPAIGN_NAME || 'WEBSITE AUTH',
       destination: formattedPhone,
       userName: 'User',
-      templateParams: [String(otpCode)],
-      // If your template has a dynamic URL button, AiSensy requires 'buttons' array
-      buttons: [
-        {
-          type: "button",
-          sub_type: "url",
-          index: 0,
-          parameters: [
-            {
-              type: "text",
-              text: String(otpCode)
-            }
-          ]
-        }
-      ]
+      templateParams: [String(otpCode)]
     };
 
     const response = await fetch('https://backend.aisensy.com/campaign/t1/api/v2', {

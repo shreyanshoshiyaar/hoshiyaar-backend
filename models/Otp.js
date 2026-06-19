@@ -14,6 +14,10 @@ const otpSchema = new mongoose.Schema({
     default: Date.now,
     expires: 300, // Document automatically deletes after 300 seconds (5 minutes)
   },
+  attempts: {
+    type: Number,
+    default: 0
+  }
 });
 
 const Otp = mongoose.model('Otp', otpSchema);

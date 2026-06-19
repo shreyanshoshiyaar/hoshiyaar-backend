@@ -145,7 +145,14 @@ export const verifyOtp = async (req, res) => {
     }
 
     if (otpRecord.otp !== otp) {
-      return res.status(400).json({ message: 'Invalid OTP' });
+      otpRecord.attempts = (otpRecord.attempts || 0) + 1;
+      if (otpRecord.attempts >= 3) {
+        await Otp.deleteOne({ _id: otpRecord._id });
+        return res.status(400).json({ message: 'Too many failed attempts. Please request a new OTP.' });
+      }
+      await otpRecord.save();
+      const attemptsLeft = 3 - otpRecord.attempts;
+      return res.status(400).json({ message: `Incorrect OTP. You have ${attemptsLeft} attempts left.` });
     }
 
     // We no longer delete the OTP here because multi-step forms (like reset password)
@@ -864,7 +871,14 @@ export const resetPassword = async (req, res) => {
     }
 
     if (otpRecord.otp !== otp) {
-      return res.status(400).json({ message: 'Invalid OTP' });
+      otpRecord.attempts = (otpRecord.attempts || 0) + 1;
+      if (otpRecord.attempts >= 3) {
+        await Otp.deleteOne({ _id: otpRecord._id });
+        return res.status(400).json({ message: 'Too many failed attempts. Please request a new OTP.' });
+      }
+      await otpRecord.save();
+      const attemptsLeft = 3 - otpRecord.attempts;
+      return res.status(400).json({ message: `Incorrect OTP. You have ${attemptsLeft} attempts left.` });
     }
 
     let formattedPhone = phone.replace(/\D/g, '');

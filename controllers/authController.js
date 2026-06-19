@@ -75,12 +75,18 @@ export const sendOtp = async (req, res) => {
       destination: formattedPhone,
       userName: 'User',
       templateParams: [String(otpCode)],
-      // If your template has a dynamic URL button, AiSensy usually requires buttonParams
-      buttonParams: [
+      // If your template has a dynamic URL button, AiSensy requires 'buttons' array
+      buttons: [
         {
+          type: "button",
+          sub_type: "url",
           index: 0,
-          type: "url",
-          parameters: [String(otpCode)]
+          parameters: [
+            {
+              type: "text",
+              text: String(otpCode)
+            }
+          ]
         }
       ]
     };
@@ -98,7 +104,8 @@ export const sendOtp = async (req, res) => {
     // AiSensy returns "success" in response if successful
     if (!response.ok || data.success === false) {
       console.error('AiSensy API Error:', data);
-      return res.status(400).json({ message: 'Failed to send WhatsApp message via AiSensy', error: data });
+      const errorMsg = data.error || data.message || JSON.stringify(data);
+      return res.status(400).json({ message: `AiSensy Error: ${errorMsg}` });
     }
 
     res.status(200).json({ message: 'OTP sent successfully via WhatsApp' });

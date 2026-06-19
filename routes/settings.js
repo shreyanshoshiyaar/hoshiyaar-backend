@@ -37,11 +37,12 @@ router.get('/:key', async (req, res) => {
       setting = await SystemSettings.create({
         key: 'homepage_slides',
         value: [
-          "https://res.cloudinary.com/dcxlzfyfp/image/upload/v1778578700/img-to-link/wunxaopn4qfirxnfdwa6.webp",
-          "https://res.cloudinary.com/dcxlzfyfp/image/upload/v1778567489/img-to-link/n9fo2moxpmfwyp04ueob.webp",
-          "https://res.cloudinary.com/dcxlzfyfp/image/upload/v1778567487/img-to-link/zy3aaizcfjl5qwm9ewjx.webp",
+          "https://res.cloudinary.com/dcxlzfyfp/image/upload/v1781872055/img-to-link/tm90kowxqrsdtxxzlmki.webp",
+          "https://res.cloudinary.com/dcxlzfyfp/image/upload/v1779864570/img-to-link/dv3bklhkmryuc4flx9dw.webp",
+          "https://res.cloudinary.com/dcxlzfyfp/image/upload/v1779454631/img-to-link/v7ay4l74oxcqheyhi7p6.webp",
           "https://res.cloudinary.com/dcxlzfyfp/image/upload/v1778579285/img-to-link/eqdx0kyjrhkruh0ownxd.webp",
-          "https://res.cloudinary.com/dcxlzfyfp/image/upload/v1778578699/img-to-link/tynaqnlzmbvoaafwu3do.webp"
+          "https://res.cloudinary.com/dcxlzfyfp/image/upload/v1779454630/img-to-link/wnc0unb3lt3m0pcvnwcr.webp",
+          "https://res.cloudinary.com/dcxlzfyfp/image/upload/v1781872054/img-to-link/lvndgld8zxovtdffnxan.webp"
         ],
         description: "List of 5 image URLs for the mobile homepage carousel"
       });

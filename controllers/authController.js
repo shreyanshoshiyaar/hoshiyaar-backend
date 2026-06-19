@@ -74,7 +74,21 @@ export const sendOtp = async (req, res) => {
       campaignName: process.env.AISENSY_CAMPAIGN_NAME || 'WEBSITE AUTH',
       destination: formattedPhone,
       userName: 'User',
-      templateParams: [String(otpCode)]
+      source: 'website',
+      templateParams: [String(otpCode)],
+      buttons: [
+        {
+          type: 'button',
+          sub_type: 'url',
+          index: '0',
+          parameters: [
+            {
+              type: 'text',
+              text: String(otpCode)
+            }
+          ]
+        }
+      ]
     };
 
     const response = await fetch('https://backend.aisensy.com/campaign/t1/api/v2', {

@@ -54,13 +54,13 @@ export const startInactivityCron = () => {
     console.log('⏰ Running Inactivity Check Cron...');
 
     try {
-      const threeDaysAgo = new Date();
-      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      const oneDayAgo = new Date();
+      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
-      // Find users active more than 3 days ago who have an FCM token
+      // Find users active more than 1 day ago who have an FCM token
       // We also check for users who haven't been nudged today (optional refinement)
       const inactiveUsers = await User.find({
-        lastActiveAt: { $lt: threeDaysAgo },
+        lastActiveAt: { $lt: oneDayAgo },
         fcmToken: { $ne: null }
       });
 
@@ -70,7 +70,7 @@ export const startInactivityCron = () => {
         await sendPushNotification(
           user.fcmToken,
           'Ready for your next adventure?',
-          `Hi ${user.name || 'Learner'}! It's been 3 days. Your story is waiting for you. Let's solve the next Science mystery!`,
+          `Hi ${user.name || 'Learner'}! It's been 1 day. Your story is waiting for you. Let's solve the next Science mystery!`,
           { type: 'inactivity_nudge' }
         );
       }

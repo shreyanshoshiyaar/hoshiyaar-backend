@@ -25,7 +25,7 @@ export const uploadImage = async (req, res) => {
 
     const result = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
-        { folder: req.body.folder || 'hoshiyaar' },
+        { folder: req.body.folder || 'hoshiyaar', resource_type: 'auto' },
         (error, result) => {
           if (error) return reject(error);
           resolve(result);
@@ -54,7 +54,7 @@ export const uploadImages = async (req, res) => {
 
     const results = await Promise.all(files.map(f => new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
-        { folder: req.body.folder || 'hoshiyaar' },
+        { folder: req.body.folder || 'hoshiyaar', resource_type: 'auto' },
         (error, result) => {
           if (error) return reject(error);
           resolve({ url: result.secure_url, public_id: result.public_id });

@@ -394,8 +394,16 @@ export const listChapters = async (req, res) => {
     }
 
     console.log(`[Curriculum] Found subject:`, s.name);
-    const chapters = await Chapter.find({ subjectId: s._id }).sort({ order: 1 });
-    console.log(`[Curriculum] Found ${chapters.length} chapters for subject`);
+    
+    const query = { subjectId: s._id };
+    // If not an admin, only show published chapters
+    const isAdmin = req.user && req.user.role === 'admin';
+    if (!isAdmin) {
+      query.isPublished = true;
+    }
+
+    const chapters = await Chapter.find(query).sort({ order: 1 });
+    console.log(`[Curriculum] Found ${chapters.length} chapters for subject (admin: ${isAdmin})`);
     return res.json(chapters);
   } catch (err) {
     console.error(`[Curriculum] Error in listChapters:`, err);
@@ -712,5 +720,25 @@ export const getRevisionCounts = async (req, res) => {
   } catch (err) {
     console.error('[getRevisionCounts] Error:', err);
     return res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+export const toggleChapterPublishStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isPublished } = req.body;
+
+    const chapter = await Chapter.findById(id);
+    if (!chapter) {
+      return res.status(404).json({ message: 'Chapter not found' });
+    }
+
+    chapter.isPublished = Boolean(isPublished);
+    await chapter.save();
+
+    res.json(chapter);
+  } catch (err) {
+    console.error('[Curriculum] Error toggling chapter publish status:', err);
+    res.status(500).json({ message: 'Server Error' });
   }
 };

@@ -281,6 +281,7 @@ export const registerGuest = async (req, res) => {
       name: 'Learner',
       isGuest: true,
       onboardingCompleted: false,
+      platform: req.body.platform || 'unknown',
     });
 
     if (user) {
@@ -291,6 +292,7 @@ export const registerGuest = async (req, res) => {
         isGuest: user.isGuest,
         onboardingCompleted: user.onboardingCompleted,
         role: user.role,
+        platform: user.platform,
         token: generateToken(user._id, user.role),
       });
     } else {
@@ -329,6 +331,13 @@ export const loginUser = async (req, res) => {
 
     // Check if user exists and then compare the password
     if (user && (await user.matchPassword(String(password)))) {
+      
+      // Update platform if provided
+      if (req.body.platform) {
+        user.platform = req.body.platform;
+        await user.save({ validateBeforeSave: false });
+      }
+
       res.json({
         _id: user._id,
         username: user.username,
@@ -344,6 +353,7 @@ export const loginUser = async (req, res) => {
         chapter: user.chapter,
         onboardingCompleted: user.onboardingCompleted,
         role: user.role,
+        platform: user.platform,
         token: generateToken(user._id, user.role),
       });
     } else {
@@ -432,6 +442,7 @@ export const updateOnboarding = async (req, res) => {
     if (req.body.school !== undefined) user.school = req.body.school;
     if (req.body.classLevel !== undefined) user.classLevel = req.body.classLevel;
     if (req.body.email !== undefined) user.email = req.body.email;
+    if (req.body.platform !== undefined) user.platform = req.body.platform;
     
     if (dateOfBirth !== undefined && dateOfBirth !== null) {
       const parsed = dateOfBirth ? new Date(dateOfBirth) : null;
@@ -834,12 +845,13 @@ export const deleteUser = async (req, res) => {
 // @route   POST /api/auth/update-activity
 // @access  Public
 export const updateActivity = async (req, res) => {
-  const { userId, fcmToken } = req.body;
+  const { userId, fcmToken, platform } = req.body;
   if (!userId) return res.status(400).json({ message: 'userId is required' });
 
   try {
     const updateData = { lastActiveAt: new Date() };
     if (fcmToken) updateData.fcmToken = fcmToken;
+    if (platform) updateData.platform = platform;
 
     const user = await User.findByIdAndUpdate(userId, updateData, { new: true });
     if (!user) return res.status(404).json({ message: 'User not found' });

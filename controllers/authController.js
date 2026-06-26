@@ -28,13 +28,25 @@ export const sendOtp = async (req, res) => {
   try {
     const User = (await import('../models/User.js')).default;
     
+    let formattedPhone = phone.replace(/\D/g, '');
+    let tenDigitPhone = formattedPhone.length > 10 ? formattedPhone.slice(-10) : formattedPhone;
+    let ninetyOnePhone = `91${tenDigitPhone}`;
+    let plusNinetyOnePhone = `+91${tenDigitPhone}`;
+
+    const existingUser = await User.findOne({ 
+      $or: [
+        { phone: phone },
+        { phone: tenDigitPhone },
+        { phone: ninetyOnePhone },
+        { phone: plusNinetyOnePhone }
+      ]
+    });
+
     if (type === 'signup') {
-      const existingUser = await User.findOne({ phone });
       if (existingUser) {
         return res.status(400).json({ message: 'An account with this phone number already exists. Please log in.' });
       }
     } else if (type === 'forgot_password') {
-      const existingUser = await User.findOne({ phone });
       if (!existingUser) {
         return res.status(400).json({ message: 'No account found with this phone number.' });
       }

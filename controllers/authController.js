@@ -89,7 +89,7 @@ export const sendOtp = async (req, res) => {
     }
 
     // Ensure phone has country code (AiSensy requires it, e.g., 919999999999 without '+')
-    let formattedPhone = phone.replace(/\D/g, ''); 
+    formattedPhone = phone.replace(/\D/g, ''); 
     if (formattedPhone.length === 10) {
       formattedPhone = `91${formattedPhone}`;
     }

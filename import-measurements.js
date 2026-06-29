@@ -14,7 +14,7 @@ import Papa from 'papaparse';
 dotenv.config();
 
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
-const CSV_FILE = 'D:\\Q&A Biodiversity - Unit 2 (4).csv';
+const CSV_FILE = 'D:\\Measurements and Motions - Akshit sheet upload 29th June.csv';
 
 async function run() {
   await mongoose.connect(MONGO_URI);
@@ -37,7 +37,7 @@ async function run() {
   const rows = parsed.data;
   console.log(`Found ${rows.length} rows.`);
 
-  const chapterTitle = 'Chapter 2: Diversity in the Living World';
+  const chapterTitle = 'Chapter 5: Measurement of Length and Motion';
   let targetChapter = await Chapter.findOne({ title: chapterTitle });
   let boardId, classId, subjectId;
 
@@ -56,9 +56,15 @@ async function run() {
       classId = cls._id;
       subjectId = subject._id;
 
-      targetChapter = await Chapter.create({ subjectId: subject._id, title: chapterTitle, order: 2 });
+      targetChapter = await Chapter.create({ subjectId: subject._id, title: chapterTitle, order: 5, isPublished: false });
   } else {
       console.log(`✅ Found Target Chapter: ${targetChapter.title}`);
+      
+      // Enforce admins only mode
+      targetChapter.isPublished = false;
+      await targetChapter.save();
+      console.log(`🔒 Chapter set to unpublished (Admins Only).`);
+
       subjectId = targetChapter.subjectId;
       const sub = await Subject.findById(subjectId);
       if (sub) {
@@ -92,7 +98,7 @@ async function run() {
      const answerText = (row['answers'] || row['answer'] || '').trim();
      const lessonTitle = (row['lesson_title'] || row['lesson'] || '').trim();
      const unitTitleRaw = (row['unit_title'] || row['unit'] || 'Default Unit').trim();
-     const reviseVal = (row['revise'] || '').trim().toLowerCase();
+     const reviseVal = (row['revise?'] || row['revise'] || '').trim().toLowerCase();
 
      if (!typeStr && !conceptText && !questionText && !lessonTitle) {
        continue;
@@ -112,8 +118,7 @@ async function run() {
      else if (mappedType === 'fill-in-the-blank' || mappedType === 'fib') mappedType = 'fib';
      else if (mappedType.includes('mcq')) mappedType = 'mcq';
 
-     // Handle new image headers (e.g. 'images 1 ')
-     const img1 = (row['images 1 '] || row['images 1'] || row['image 1'] || '').trim();
+     const img1 = (row['image 1'] || row['images 1 '] || row['images 1'] || '').trim();
      
      if (['comic', 'concept', 'video'].includes(mappedType)) {
        if (!conceptText && !questionText && !img1) {
@@ -154,7 +159,7 @@ async function run() {
      let moduleTitle = lessonTitle;
      
      let unit = await Unit.findOne({ chapterId: targetChapter._id, title: unitTitleRaw });
-     if (!unit) unit = await Unit.create({ chapterId: targetChapter._id, title: unitTitleRaw, order: 2 }); // It's Unit 2
+     if (!unit) unit = await Unit.create({ chapterId: targetChapter._id, title: unitTitleRaw, order: 1 });
 
      const unitIdStr = String(unit._id);
      validUnitIds.add(unitIdStr);
@@ -234,7 +239,7 @@ async function run() {
      }
      
      const images = [];
-     const imgHeaders = ['images 1 ', 'images 1', 'image 1', 'images 2 ', 'images 2', 'image 2', 'images 3 ', 'images 3', 'image 3'];
+     const imgHeaders = ['image 1', 'image 2', 'image 3', 'images 1 ', 'images 2 ', 'images 3 '];
      const matchedHeaders = [];
      
      // Deduplicate and extract images
@@ -284,21 +289,22 @@ async function run() {
      }
   }
 
-  // ONLY cleanup stale modules inside the specific Units we touched
-  // This prevents deleting Unit 1 when we only uploaded Unit 2
-  for (const uid of Array.from(validUnitIds)) {
-      const existingModules = await Module.find({ unitId: uid });
-      for (const m of existingModules) {
-          if (!validModuleIds.has(String(m._id))) {
-              await CurriculumItem.deleteMany({ moduleId: m._id });
-              await DefaultRevisionQuestion.deleteMany({ moduleId: m._id });
-              await Module.deleteOne({ _id: m._id });
-          }
+  // Cleanup stale modules and units for the whole chapter
+  const existingModules = await Module.find({ chapterId: targetChapter._id });
+  for (const m of existingModules) {
+      if (!validModuleIds.has(String(m._id))) {
+          await CurriculumItem.deleteMany({ moduleId: m._id });
+          await DefaultRevisionQuestion.deleteMany({ moduleId: m._id });
+          await Module.deleteOne({ _id: m._id });
       }
   }
 
-  // We explicitly do NOT delete any units in this partial upload.
-  // We only clean out old modules inside Unit 2 that were deleted from the CSV.
+  const existingUnits = await Unit.find({ chapterId: targetChapter._id });
+  for (const u of existingUnits) {
+      if (!validUnitIds.has(String(u._id))) {
+          await Unit.deleteOne({ _id: u._id });
+      }
+  }
 
   console.log(`\n🎉 Upload completed! Successfully processed ${processedCount} rows.`);
   if (skippedCount > 0) {

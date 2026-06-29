@@ -14,7 +14,7 @@ import Papa from 'papaparse';
 dotenv.config();
 
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
-const CSV_FILE = 'D:\\Electromagnetism - Working 23 June.csv';
+const CSV_FILE = 'D:\\Electromagnetism - Final sheet upload - 28th June.csv';
 
 async function run() {
   await mongoose.connect(MONGO_URI);
@@ -67,36 +67,28 @@ async function run() {
       }
   }
 
-  // Clear existing data for this chapter
-  const unitsToClear = await Unit.find({ chapterId: targetChapter._id });
-  for (const u of unitsToClear) {
-      const modsToClear = await Module.find({ unitId: u._id });
-      for (const m of modsToClear) {
-          await CurriculumItem.deleteMany({ moduleId: m._id });
-          await DefaultRevisionQuestion.deleteMany({ moduleId: m._id });
-      }
-      await Module.deleteMany({ unitId: u._id });
-  }
-  await Unit.deleteMany({ chapterId: targetChapter._id });
-  console.log("🧹 Cleared old modules and revisions for a fresh upload.");
-
+  const validUnitIds = new Set();
+  const validModuleIds = new Set();
+  
   const clearedModules = new Set();
   const orderCounters = {};
   const unitModuleOrderCounters = {};
 
   let processedCount = 0;
   let skippedCount = 0;
+  let issuesFound = [];
 
   for (let i = 0; i < rows.length; i++) {
      const row = rows[i];
+     const rowNum = i + 2; // Approximate row number
      
      const typeStr = (row['type'] || '').trim().toLowerCase();
-     const conceptText = (row['concept'] || '').trim();
-     const questionText = (row['questions'] || '').trim();
+     const conceptText = (row['concept'] || row['statement'] || '').trim();
+     const questionText = (row['questions'] || row['question'] || '').trim();
      const optionsStr = (row['options'] || '').trim();
-     const answerText = (row['answers'] || '').trim();
-     const lessonTitle = (row['lesson_title'] || '').trim();
-     const unitTitleRaw = (row['unit_title'] || 'Default Unit').trim();
+     const answerText = (row['answers'] || row['answer'] || '').trim();
+     const lessonTitle = (row['lesson_title'] || row['lesson'] || '').trim();
+     const unitTitleRaw = (row['unit_title'] || row['unit'] || 'Default Unit').trim();
      const reviseVal = (row['revise'] || '').trim().toLowerCase();
 
      // Skip completely blank rows or missing crucial fields
@@ -106,6 +98,7 @@ async function run() {
 
      if (!lessonTitle || !typeStr) {
        skippedCount++;
+       issuesFound.push(`Row ${rowNum}: Missing 'lesson_title' or 'type'`);
        continue;
      }
 
@@ -121,16 +114,34 @@ async function run() {
      const img1 = (row['image 1'] || '').trim();
      
      if (['comic', 'concept', 'video'].includes(mappedType)) {
-       if (!conceptText && !questionText && !img1) isValid = false;
+       if (!conceptText && !questionText && !img1) {
+          isValid = false;
+          issuesFound.push(`Row ${rowNum} (${mappedType}): Missing concept text, question text, or image`);
+       }
      } else if (mappedType === 'mcq') {
-       if (!questionText || !optionsStr || !answerText) isValid = false;
+       if (!questionText || !optionsStr || !answerText) {
+          isValid = false;
+          issuesFound.push(`Row ${rowNum} (${mappedType}): Missing question, options, or answers`);
+       }
      } else if (mappedType === 're-arrange') {
-       if (!questionText || !optionsStr || !answerText) isValid = false;
+       if (!questionText || !optionsStr || !answerText) {
+          isValid = false;
+          issuesFound.push(`Row ${rowNum} (${mappedType}): Missing question, options, or answers`);
+       }
      } else if (mappedType === 'fib') {
-       if (!questionText && !conceptText) isValid = false;
-       if (!answerText) isValid = false;
+       if (!questionText && !conceptText) {
+          isValid = false;
+          issuesFound.push(`Row ${rowNum} (${mappedType}): Missing question/concept`);
+       }
+       if (!answerText) {
+          isValid = false;
+          issuesFound.push(`Row ${rowNum} (${mappedType}): Missing answer`);
+       }
      } else if (mappedType === 'descriptive') {
-       if (!questionText || !conceptText || !answerText) isValid = false;
+       if (!questionText || !conceptText || !answerText) {
+          isValid = false;
+          issuesFound.push(`Row ${rowNum} (${mappedType}): Missing question, model answer, or keywords`);
+       }
      }
 
      if (!isValid) {
@@ -140,12 +151,13 @@ async function run() {
 
      // Hierarchy resolution
      let moduleTitle = lessonTitle;
-     if (moduleTitle.toLowerCase() === 'difficult module') moduleTitle = 'HOT MODULE';
-
+     
      let unit = await Unit.findOne({ chapterId: targetChapter._id, title: unitTitleRaw });
      if (!unit) unit = await Unit.create({ chapterId: targetChapter._id, title: unitTitleRaw, order: 1 });
 
      const unitIdStr = String(unit._id);
+     validUnitIds.add(unitIdStr);
+     
      if (!unitModuleOrderCounters[unitIdStr]) unitModuleOrderCounters[unitIdStr] = 1;
 
      let mod = await Module.findOne({ chapterId: targetChapter._id, unitId: unit._id, title: moduleTitle });
@@ -154,6 +166,8 @@ async function run() {
      }
 
      const modIdStr = String(mod._id);
+     validModuleIds.add(modIdStr);
+     
      if (!clearedModules.has(modIdStr)) {
         await CurriculumItem.deleteMany({ moduleId: mod._id });
         await DefaultRevisionQuestion.deleteMany({ moduleId: mod._id });
@@ -226,12 +240,16 @@ async function run() {
      });
      
      if (images.length > 0) {
-        itemDoc.images = images;
-        if (itemDoc.type === 'comic') {
-           itemDoc.imageUrl = images[0];
-        } else if (itemDoc.type === 'video') {
+        if (mappedType === 'video') {
            itemDoc.videoUrl = images[0];
-           itemDoc.imageUrl = images[0]; 
+           if (images.length > 1) {
+              itemDoc.images = images.slice(1);
+           }
+        } else {
+           itemDoc.images = images;
+           if (itemDoc.type === 'comic') {
+              itemDoc.imageUrl = images[0];
+           }
         }
      }
      
@@ -254,13 +272,35 @@ async function run() {
             answer: itemDoc.answer,
             words: itemDoc.words,
             images: itemDoc.images,
+            videoUrl: itemDoc.videoUrl,
             order: currentOrder
          });
      }
   }
 
+  // Cleanup stale modules and units
+  const existingModules = await Module.find({ chapterId: targetChapter._id });
+  for (const m of existingModules) {
+      if (!validModuleIds.has(String(m._id))) {
+          await CurriculumItem.deleteMany({ moduleId: m._id });
+          await DefaultRevisionQuestion.deleteMany({ moduleId: m._id });
+          await Module.deleteOne({ _id: m._id });
+      }
+  }
+
+  const existingUnits = await Unit.find({ chapterId: targetChapter._id });
+  for (const u of existingUnits) {
+      if (!validUnitIds.has(String(u._id))) {
+          await Unit.deleteOne({ _id: u._id });
+      }
+  }
+
   console.log(`\n🎉 Upload completed! Successfully processed ${processedCount} rows.`);
-  console.log(`🚫 Skipped ${skippedCount} rows that were missing required text, options, or answers.`);
+  if (skippedCount > 0) {
+     console.log(`🚫 Skipped ${skippedCount} rows that were missing required text, options, or answers.`);
+     console.log(`\n--- Issue Report ---`);
+     issuesFound.forEach(issue => console.log(issue));
+  }
   
   process.exit(0);
 }

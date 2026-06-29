@@ -18,6 +18,8 @@ const DefaultRevisionQuestionSchema = new Schema({
   options: { type: [String], default: [] },
   answer: { type: Schema.Types.Mixed },
   words: { type: [String], default: [] },
+  videoUrl: { type: String },
+  introVideoUrl: { type: String },
   images: { type: [String], default: [] },
   order: { type: Number, default: 1 },
   active: { type: Boolean, default: true },

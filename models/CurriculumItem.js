@@ -15,6 +15,8 @@ const CurriculumItemSchema = new Schema({
   modelAnswers: [String],
   imageUrl: { type: String },
   imagePublicId: { type: String },
+  videoUrl: { type: String },
+  introVideoUrl: { type: String },
   images: { type: [String], default: [] },
   imagePublicIds: { type: [String], default: [] },
 }, { timestamps: true });

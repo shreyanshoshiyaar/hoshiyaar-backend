@@ -14,7 +14,7 @@ import Papa from 'papaparse';
 dotenv.config();
 
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
-const CSV_FILE = 'D:\\Magnets Q&A - Final Akshit Upload 23rd June.csv';
+const CSV_FILE = 'D:\\Magnets Q&A - Final Akshit Upload 29th June.csv';
 
 async function run() {
   await mongoose.connect(MONGO_URI);
@@ -67,19 +67,9 @@ async function run() {
       }
   }
 
-  // Clear existing data for this chapter
-  const unitsToClear = await Unit.find({ chapterId: targetChapter._id });
-  for (const u of unitsToClear) {
-      const modsToClear = await Module.find({ unitId: u._id });
-      for (const m of modsToClear) {
-          await CurriculumItem.deleteMany({ moduleId: m._id });
-          await DefaultRevisionQuestion.deleteMany({ moduleId: m._id });
-      }
-      await Module.deleteMany({ unitId: u._id });
-  }
-  await Unit.deleteMany({ chapterId: targetChapter._id });
-  console.log("🧹 Cleared old modules and revisions for a fresh upload.");
-
+  const validUnitIds = new Set();
+  const validModuleIds = new Set();
+  
   const clearedModules = new Set();
   const orderCounters = {};
   const unitModuleOrderCounters = {};
@@ -161,12 +151,13 @@ async function run() {
 
      // Hierarchy resolution
      let moduleTitle = lessonTitle;
-     if (moduleTitle.toLowerCase() === 'difficult module') moduleTitle = 'HOT MODULE';
-
+     
      let unit = await Unit.findOne({ chapterId: targetChapter._id, title: unitTitleRaw });
      if (!unit) unit = await Unit.create({ chapterId: targetChapter._id, title: unitTitleRaw, order: 1 });
 
      const unitIdStr = String(unit._id);
+     validUnitIds.add(unitIdStr);
+     
      if (!unitModuleOrderCounters[unitIdStr]) unitModuleOrderCounters[unitIdStr] = 1;
 
      let mod = await Module.findOne({ chapterId: targetChapter._id, unitId: unit._id, title: moduleTitle });
@@ -175,6 +166,8 @@ async function run() {
      }
 
      const modIdStr = String(mod._id);
+     validModuleIds.add(modIdStr);
+     
      if (!clearedModules.has(modIdStr)) {
         await CurriculumItem.deleteMany({ moduleId: mod._id });
         await DefaultRevisionQuestion.deleteMany({ moduleId: mod._id });
@@ -247,12 +240,16 @@ async function run() {
      });
      
      if (images.length > 0) {
-        itemDoc.images = images;
-        if (itemDoc.type === 'comic') {
-           itemDoc.imageUrl = images[0];
-        } else if (itemDoc.type === 'video') {
+        if (mappedType === 'video') {
            itemDoc.videoUrl = images[0];
-           itemDoc.imageUrl = images[0]; 
+           if (images.length > 1) {
+              itemDoc.images = images.slice(1);
+           }
+        } else {
+           itemDoc.images = images;
+           if (itemDoc.type === 'comic') {
+              itemDoc.imageUrl = images[0];
+           }
         }
      }
      
@@ -275,9 +272,27 @@ async function run() {
             answer: itemDoc.answer,
             words: itemDoc.words,
             images: itemDoc.images,
+            videoUrl: itemDoc.videoUrl,
             order: currentOrder
          });
      }
+  }
+
+  // Cleanup stale modules and units
+  const existingModules = await Module.find({ chapterId: targetChapter._id });
+  for (const m of existingModules) {
+      if (!validModuleIds.has(String(m._id))) {
+          await CurriculumItem.deleteMany({ moduleId: m._id });
+          await DefaultRevisionQuestion.deleteMany({ moduleId: m._id });
+          await Module.deleteOne({ _id: m._id });
+      }
+  }
+
+  const existingUnits = await Unit.find({ chapterId: targetChapter._id });
+  for (const u of existingUnits) {
+      if (!validUnitIds.has(String(u._id))) {
+          await Unit.deleteOne({ _id: u._id });
+      }
   }
 
   console.log(`\n🎉 Upload completed! Successfully processed ${processedCount} rows.`);

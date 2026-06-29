@@ -81,44 +81,58 @@ export const sendOtp = async (req, res) => {
     );
 
     // Call AiSensy API to send WhatsApp Template
-    const AISENSY_API_KEY = process.env.AISENSY_API_KEY;
+    const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const WHATSAPP_TOKEN = process.env.WHATSAPP_PERMANENT_TOKEN;
 
-    if (!AISENSY_API_KEY) {
-      console.warn('AiSensy API key not configured in .env');
+    if (!WHATSAPP_PHONE_NUMBER_ID || !WHATSAPP_TOKEN) {
+      console.warn('Meta WhatsApp API keys not configured in .env');
       return res.status(500).json({ message: 'WhatsApp API not configured on server' });
     }
 
-    // Ensure phone has country code (AiSensy requires it, e.g., 919999999999 without '+')
+    // Ensure phone has country code (Meta requires it, e.g., 919999999999 without '+')
     formattedPhone = phone.replace(/\D/g, ''); 
     if (formattedPhone.length === 10) {
       formattedPhone = `91${formattedPhone}`;
     }
 
     const payload = {
-      apiKey: AISENSY_API_KEY,
-      campaignName: process.env.AISENSY_CAMPAIGN_NAME || 'WEBSITE AUTH',
-      destination: formattedPhone,
-      userName: 'User',
-      source: 'website',
-      templateParams: [String(otpCode)],
-      buttons: [
-        {
-          type: 'button',
-          sub_type: 'url',
-          index: '0',
-          parameters: [
-            {
-              type: 'text',
-              text: String(otpCode)
-            }
-          ]
-        }
-      ]
+      messaging_product: 'whatsapp',
+      to: formattedPhone,
+      type: 'template',
+      template: {
+        name: 'login_otp',
+        language: {
+          code: 'en'
+        },
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              {
+                type: 'text',
+                text: String(otpCode)
+              }
+            ]
+          },
+          {
+            type: 'button',
+            sub_type: 'url',
+            index: '0',
+            parameters: [
+              {
+                type: 'text',
+                text: String(otpCode)
+              }
+            ]
+          }
+        ]
+      }
     };
 
-    const response = await fetch('https://backend.aisensy.com/campaign/t1/api/v2', {
+    const response = await fetch(`https://graph.facebook.com/v17.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
@@ -126,11 +140,10 @@ export const sendOtp = async (req, res) => {
 
     const data = await response.json();
 
-    // AiSensy returns "success" in response if successful
-    if (!response.ok || data.success === false) {
-      console.error('AiSensy API Error:', data);
-      const errorMsg = data.error || data.message || JSON.stringify(data);
-      return res.status(400).json({ message: `AiSensy Error: ${errorMsg}` });
+    if (!response.ok || data.error) {
+      console.error('Meta WhatsApp API Error:', data);
+      const errorMsg = data.error?.message || JSON.stringify(data);
+      return res.status(400).json({ message: `WhatsApp Error: ${errorMsg}` });
     }
 
     res.status(200).json({ message: 'OTP sent successfully via WhatsApp' });

@@ -3,6 +3,7 @@ import UserIncorrectQuestion from '../models/UserIncorrectQuestion.js';
 import mongoose from 'mongoose';
 import DefaultRevisionQuestion from '../models/DefaultRevisionQuestion.js';
 import Module from '../models/Module.js';
+import { cacheResponse } from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
 
@@ -67,7 +68,7 @@ router.post('/backfill', async (req, res) => {
 });
 
 // GET /api/review/defaults?chapterId=&unitId=&moduleId=&subjectId=&board=&classTitle=&userId=
-router.get('/defaults', async (req, res) => {
+router.get('/defaults', cacheResponse(900), async (req, res) => {
   try {
     const { moduleId, unitId, chapterId, subjectId } = req.query;
     const filter = { active: true };

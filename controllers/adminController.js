@@ -129,6 +129,7 @@ export const getUsersAnalytics = async (req, res) => {
         createdAt: user.createdAt,
         lastActive,
         lastSessionModuleId,
+        activeDaysCount: user.activeDaysCount || 1,
       };
     });
 

@@ -874,14 +874,29 @@ export const updateActivity = async (req, res) => {
   if (!userId) return res.status(400).json({ message: 'userId is required' });
 
   try {
-    const updateData = { lastActiveAt: new Date() };
-    if (fcmToken) updateData.fcmToken = fcmToken;
-    if (platform) updateData.platform = platform;
-
-    const user = await User.findByIdAndUpdate(userId, updateData, { new: true });
+    const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    res.json({ message: 'Activity updated', lastActiveAt: user.lastActiveAt });
+    const now = new Date();
+    const lastActive = user.lastActiveAt ? new Date(user.lastActiveAt) : null;
+    
+    // Check if it's a new calendar day
+    let incrementDays = 0;
+    if (!lastActive || lastActive.toDateString() !== now.toDateString()) {
+      incrementDays = 1;
+    }
+
+    user.lastActiveAt = now;
+    if (fcmToken) user.fcmToken = fcmToken;
+    if (platform) user.platform = platform;
+    
+    // Increment activeDaysCount if new day
+    if (incrementDays > 0) {
+      user.activeDaysCount = (user.activeDaysCount || 1) + 1;
+    }
+
+    await user.save();
+    res.json({ message: 'Activity updated', lastActiveAt: user.lastActiveAt, activeDaysCount: user.activeDaysCount });
   } catch (error) {
     res.status(500).json({ message: `Server Error: ${error.message}` });
   }

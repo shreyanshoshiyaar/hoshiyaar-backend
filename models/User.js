@@ -127,6 +127,10 @@ const userSchema = mongoose.Schema(
     lastActiveAt: {
       type: Date,
       default: Date.now
+    },
+    activeDaysCount: {
+      type: Number,
+      default: 1
     }
   },
   {

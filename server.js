@@ -14,6 +14,7 @@ import blogRoutes from './routes/blog.js';
 import settingsRoutes from './routes/settings.js';
 import adminRoutes from './routes/adminRoutes.js';
 import whatsappRoutes from './routes/whatsappRoutes.js';
+import sitemapRoutes from './routes/sitemap.js';
 import Subject from './models/Subject.js';
 import ClassLevel from './models/ClassLevel.js';
 import User from './models/User.js';
@@ -148,6 +149,9 @@ app.use('/api/admin', adminRoutes);
 
 // WhatsApp Webhook routes
 app.use('/api/whatsapp', whatsappRoutes);
+
+// Dynamic Sitemap Route
+app.use('/sitemap.xml', sitemapRoutes);
 
 // ============================================
 // ERROR HANDLING

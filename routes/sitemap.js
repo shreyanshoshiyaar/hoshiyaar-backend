@@ -1,20 +1,12 @@
-import mongoose from 'mongoose';
-import dotenv from 'dotenv';
-import fs from 'fs';
-import path from 'path';
+import express from 'express';
+import Blog from '../models/Blog.js';
+import Module from '../models/Module.js';
 
-dotenv.config({ path: 'd:/hoshiyaar/hoshiyaar/Hoshiyaar-backend-main/.env' });
-
-import Blog from './models/Blog.js';
-import Module from './models/Module.js';
-
+const router = express.Router();
 const DOMAIN = 'https://hoshiyaar.info';
 
-const generateSitemap = async () => {
+router.get('/', async (req, res) => {
   try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log('Connected to DB for sitemap generation');
-
     const blogs = await Blog.find({}, '_id category slug updatedAt').lean();
     const modules = await Module.find({}, '_id').lean(); // Assuming module ID is used in routes
 
@@ -53,26 +45,12 @@ const generateSitemap = async () => {
 
     sitemap += `</urlset>`;
 
-    const publicPath = 'd:/hoshiyaar/hoshiyaar/Hoshiyaar-frontend-main/public/sitemap.xml';
-    const distPath = 'd:/hoshiyaar/hoshiyaar/Hoshiyaar-frontend-main/dist/sitemap.xml';
-    
-    fs.writeFileSync(publicPath, sitemap, 'utf8');
-    try {
-      if (fs.existsSync('d:/hoshiyaar/hoshiyaar/Hoshiyaar-frontend-main/dist')) {
-        fs.writeFileSync(distPath, sitemap, 'utf8');
-      }
-    } catch (e) {
-      console.log('Dist folder not found, skipping writing there.');
-    }
-    
-    console.log(`Sitemap generated successfully with ${staticRoutes.length + blogs.length + modules.length} URLs!`);
-    console.log(`Saved to: ${publicPath} and ${distPath}`);
-
-  } catch (err) {
-    console.error('Error generating sitemap:', err);
-  } finally {
-    process.exit(0);
+    res.header('Content-Type', 'application/xml');
+    res.send(sitemap);
+  } catch (error) {
+    console.error('Error generating sitemap:', error);
+    res.status(500).end();
   }
-};
+});
 
-generateSitemap();
+export default router;

@@ -20,7 +20,7 @@ router.get('/:key', async (req, res) => {
     
     // HARDCODED OVERRIDE: Instantly forces the popup for all users on v39 or lower
     if (key === 'min_android_version') {
-      return res.json({ key: 'min_android_version', value: 40 });
+      return res.json({ key: 'min_android_version', value: 41 });
     }
 
     let setting = await SystemSettings.findOne({ key });

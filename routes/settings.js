@@ -17,8 +17,21 @@ router.get('/', async (req, res) => {
 router.get('/:key', async (req, res) => {
   try {
     const { key } = req.params;
+    
+    // HARDCODED OVERRIDE: Instantly forces the popup for all users on v39 or lower
+    if (key === 'min_android_version') {
+      return res.json({ key: 'min_android_version', value: 40 });
+    }
+
     let setting = await SystemSettings.findOne({ key });
     // If not found, create a default one for known keys
+    if (!setting && key === 'min_android_version') {
+      setting = await SystemSettings.create({
+        key: 'min_android_version',
+        value: 999,
+        description: "Minimum supported Android app version"
+      });
+    }
     if (!setting && key === 'mission_video_url') {
       setting = await SystemSettings.create({
         key: 'mission_video_url',

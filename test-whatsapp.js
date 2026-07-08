@@ -3,7 +3,7 @@ dotenv.config();
 
 const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_PERMANENT_TOKEN;
-const phone = "917021970672";
+const phone = "916387620131";
 const otpCode = "123456";
 
 const payload = {

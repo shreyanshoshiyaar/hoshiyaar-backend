@@ -89,15 +89,11 @@ export const sendOtp = async (req, res) => {
       return res.status(500).json({ message: 'WhatsApp API not configured on server' });
     }
 
-    // Ensure phone has country code (Meta requires it, e.g., 919999999999 without '+')
-    formattedPhone = phone.replace(/\D/g, ''); 
-    if (formattedPhone.length === 10) {
-      formattedPhone = `91${formattedPhone}`;
-    }
-
+    // Since this is an Indian CBSE app, we always send to +91
+    // ninetyOnePhone was already parsed correctly at the top of the function
     const payload = {
       messaging_product: 'whatsapp',
-      to: formattedPhone,
+      to: ninetyOnePhone,
       type: 'template',
       template: {
         name: 'login_otp',
@@ -129,7 +125,7 @@ export const sendOtp = async (req, res) => {
       }
     };
 
-    const response = await fetch(`https://graph.facebook.com/v17.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+    const response = await fetch(`https://graph.facebook.com/v19.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
@@ -196,7 +192,7 @@ export const verifyOtp = async (req, res) => {
 // @route   POST /api/auth/register
 // @access  Public
 export const registerUser = async (req, res) => {
-  const { username, name, email = null, phone = null, password = null, age, dateOfBirth, classLevel = null, board = null, classTitle = null, subject = null, chapter = null, platform = 'unknown' } = req.body;
+  const { username, name, email = null, phone = null, password = null, age, dateOfBirth, classLevel = null, board = null, classTitle = null, subject = null, chapter = null, platform = 'unknown', whatsappOptIn = true } = req.body;
 
   try {
     // Ensure unique username
@@ -265,6 +261,7 @@ export const registerUser = async (req, res) => {
       phone: phone || null,
       password: password || null,
       platform,
+      whatsappOptIn,
       // Show onboarding after signup until the learner completes selections
       // Mark onboarding complete only if board, subject, and chapter are present
       onboardingCompleted: !!((board || boardDoc) && (subject || subjectDoc) && (chapter || chapterDoc)),

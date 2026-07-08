@@ -131,6 +131,10 @@ const userSchema = mongoose.Schema(
     activeDaysCount: {
       type: Number,
       default: 1
+    },
+    whatsappOptIn: {
+      type: Boolean,
+      default: true
     }
   },
   {

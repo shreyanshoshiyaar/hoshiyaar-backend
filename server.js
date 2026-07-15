@@ -85,6 +85,11 @@ const corsOptions = {
       return callback(null, true);
     }
 
+    // Allow all local network IPs for development testing on phones
+    if (origin && (origin.startsWith('http://192.168.') || origin.startsWith('http://10.') || origin.startsWith('http://172.'))) {
+      return callback(null, true);
+    }
+
     // Allow defined origins
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);

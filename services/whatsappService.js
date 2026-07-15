@@ -15,6 +15,9 @@ const API_URL = 'https://backend.aisensy.com/campaign/t1/api/v2';
  * @returns {Promise<object>} response from AiSensy
  */
 export const sendAiSensyTemplate = async ({ to, templateName, userName = "Learner", customContactFields = {}, templateParams = [] }) => {
+  // AiSensy is temporarily disabled as per user request
+  return null;
+
   if (!AISENSY_API_KEY) {
     console.warn("⚠️ AISENSY_API_KEY is not configured in .env. Skipping WhatsApp message.");
     return null;
@@ -51,6 +54,6 @@ export const sendAiSensyTemplate = async ({ to, templateName, userName = "Learne
     return response.data;
   } catch (error) {
     console.error(`❌ Error sending AiSensy template '${templateName}':`, error.response?.data || error.message);
-    throw error;
+    return null;
   }
 };

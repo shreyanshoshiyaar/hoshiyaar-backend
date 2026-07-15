@@ -260,3 +260,23 @@ export const getUsersAnalytics = async (req, res) => {
     res.status(500).json({ message: `Server Error: ${error.message}` });
   }
 };
+
+// @desc    Update a user's school
+// @route   PUT /api/admin/users/:id/school
+// @access  Private/Admin
+export const updateUserSchool = async (req, res) => {
+  try {
+    const { school } = req.body;
+    const user = await User.findById(req.params.id);
+
+    if (user) {
+      user.school = school || 'Self Study / Individual';
+      const updatedUser = await user.save();
+      res.json({ success: true, user: updatedUser });
+    } else {
+      res.status(404).json({ message: 'User not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: `Server Error: ${error.message}` });
+  }
+};

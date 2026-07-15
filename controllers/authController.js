@@ -268,6 +268,28 @@ export const registerUser = async (req, res) => {
     });
 
     if (user) {
+      // Trigger AiSensy Welcome Message if opted in
+      if (user.whatsappOptIn && user.phone) {
+        import('../services/whatsappService.js')
+          .then(({ sendAiSensyTemplate }) => {
+            sendAiSensyTemplate({
+              to: user.phone,
+              templateName: 'welcome_after_signup',
+              userName: user.name || 'Learner',
+              customContactFields: {
+                ParentName: user.name, // Assuming parent name is registered name
+                Class: user.classLevel || '',
+                SignupSource: 'App Registration'
+              },
+              templateParams: [user.name || 'Learner'] // Adjust if template needs params
+            });
+          })
+          .catch(err => console.error('Failed to load whatsapp service:', err));
+        
+        user.whatsappNudges.welcomeSent = true;
+        user.save({ validateBeforeSave: false }).catch(e => console.error(e));
+      }
+
       res.status(201).json({
         _id: user._id,
         username: user.username,

@@ -19,6 +19,7 @@ import Subject from './models/Subject.js';
 import ClassLevel from './models/ClassLevel.js';
 import User from './models/User.js';
 import { initFirebase, startInactivityCron } from './services/notificationService.js';
+import { startWhatsappNudgeCron } from './services/whatsappNudgeCron.js';
 
 // Load environment variables from .env file
 config();
@@ -40,6 +41,9 @@ initFirebase();
 
 // Start the Inactivity Check Cron Job
 startInactivityCron();
+
+// Start the WhatsApp Nudge Cron Job
+startWhatsappNudgeCron();
 
 const app = express();
 
@@ -146,6 +150,14 @@ app.use('/api/blogs', blogRoutes);
 // Settings routes
 app.use('/api/settings', settingsRoutes);
 app.use('/api/admin', adminRoutes);
+
+// Interactive Story routes
+import interactiveStoryRoutes from './routes/interactiveStory.js';
+app.use('/api/stories', interactiveStoryRoutes);
+
+// AI Demo routes
+import aiRoutes from './routes/aiRoutes.js';
+app.use('/api/ai', aiRoutes);
 
 // WhatsApp Webhook routes
 app.use('/api/whatsapp', whatsappRoutes);

@@ -14,7 +14,7 @@ import Papa from 'papaparse';
 dotenv.config();
 
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
-const CSV_FILE = 'D:\\Measurements and Motions - Akshit sheet upload 29th June.csv';
+const CSV_FILE = 'D:\\Copy of Plants-Eduvate - Final sheet upload akshit 9 july.csv';
 
 async function run() {
   await mongoose.connect(MONGO_URI);
@@ -37,26 +37,26 @@ async function run() {
   const rows = parsed.data;
   console.log(`Found ${rows.length} rows.`);
 
-  const chapterTitle = 'Chapter 5: Measurement of Length and Motion';
+  const chapterTitle = 'Chapter 3: Plant Form and Function';
   let targetChapter = await Chapter.findOne({ title: chapterTitle });
   let boardId, classId, subjectId;
 
   if (!targetChapter) {
       console.log(`⚠️ Could not find an existing '${chapterTitle}' chapter. Creating it...`);
-      let board = await Board.findOne({ name: 'CBSE' }); 
-      if (!board) board = await Board.create({ name: 'CBSE' });
+      let board = await Board.findOne({ name: /Eduvate/i }); 
+      if (!board) board = await Board.create({ name: 'Eduvate' });
       
       let cls = await ClassLevel.findOne({ boardId: board._id, name: '6' });
       if (!cls) cls = await ClassLevel.create({ boardId: board._id, name: '6' });
 
-      let subject = await Subject.findOne({ boardId: board._id, classId: cls._id, name: 'Science' });
+      let subject = await Subject.findOne({ boardId: board._id, classId: cls._id, name: /Science/i });
       if (!subject) subject = await Subject.create({ boardId: board._id, classId: cls._id, name: 'Science', order: 1 });
       
       boardId = board._id;
       classId = cls._id;
       subjectId = subject._id;
 
-      targetChapter = await Chapter.create({ subjectId: subject._id, title: chapterTitle, order: 5, isPublished: false });
+      targetChapter = await Chapter.create({ subjectId: subject._id, title: chapterTitle, order: 3, isPublished: false });
   } else {
       console.log(`✅ Found Target Chapter: ${targetChapter.title}`);
       
@@ -88,7 +88,7 @@ async function run() {
   let difficultBlocks = 0;
   let lastLesson = null;
   for (const row of rows) {
-    const lt = String(row['lesson_title'] || row['lesson'] || '').trim();
+    const lt = String(row['lesson name'] || row['lesson title'] || row['lesson_title'] || row['lesson'] || '').trim();
     if (lt && lt !== lastLesson) {
       if (/difficult module/i.test(lt) || /hot module/i.test(lt)) difficultBlocks++;
       lastLesson = lt;
@@ -112,8 +112,8 @@ async function run() {
      const questionText = (row['questions'] || row['question'] || '').trim();
      const optionsStr = (row['options'] || '').trim();
      const answerText = (row['answers'] || row['answer'] || '').trim();
-     const lessonTitle = (row['lesson_title'] || row['lesson'] || '').trim();
-     const unitTitleRaw = (row['unit_title'] || row['unit'] || 'Default Unit').trim();
+     const lessonTitle = (row['lesson name'] || row['lesson title'] || row['lesson_title'] || row['lesson'] || '').trim();
+     const unitTitleRaw = (row['unit name'] || row['unit title'] || row['unit_title'] || row['unit'] || 'Default Unit').trim();
      const reviseVal = (row['revise?'] || row['revise'] || '').trim().toLowerCase();
 
      if (!typeStr && !conceptText && !questionText && !lessonTitle) {

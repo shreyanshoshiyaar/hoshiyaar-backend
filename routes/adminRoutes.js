@@ -1,5 +1,5 @@
 import express from 'express';
-import { adminLogin, getUsersAnalytics } from '../controllers/adminController.js';
+import { adminLogin, getUsersAnalytics, updateUserSchool } from '../controllers/adminController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -12,5 +12,7 @@ router.get('/verify', protect, admin, (req, res) => {
 });
 
 router.get('/users-analytics', protect, admin, getUsersAnalytics);
+
+router.put('/users/:id/school', protect, admin, updateUserSchool);
 
 export default router;

@@ -135,6 +135,12 @@ const userSchema = mongoose.Schema(
     whatsappOptIn: {
       type: Boolean,
       default: true
+    },
+    whatsappNudges: {
+      welcomeSent: { type: Boolean, default: false },
+      noModule30mSent: { type: Boolean, default: false },
+      startedNotCompleted2hSent: { type: Boolean, default: false },
+      inactive24hSent: { type: Boolean, default: false }
     }
   },
   {

@@ -38,7 +38,7 @@ export const getStory = async (req, res) => {
 // @access  Private/Admin
 export const createOrUpdateStory = async (req, res) => {
   try {
-    const { _id, board, classLevel, backgroundImg, backgroundMusic, slides, isActive } = req.body;
+    const { _id, board, classLevel, backgroundImg, backgroundMusic, slides, isActive, targetSubject, targetChapterId } = req.body;
     
     let story;
     
@@ -46,7 +46,7 @@ export const createOrUpdateStory = async (req, res) => {
       // Update existing
       story = await InteractiveStory.findByIdAndUpdate(
         _id,
-        { board, classLevel, backgroundImg, backgroundMusic, slides, isActive },
+        { board, classLevel, backgroundImg, backgroundMusic, slides, isActive, targetSubject, targetChapterId },
         { new: true, runValidators: true }
       );
     } else {
@@ -56,13 +56,13 @@ export const createOrUpdateStory = async (req, res) => {
         // Update existing instead of throwing unique constraint error
         story = await InteractiveStory.findByIdAndUpdate(
           existing._id,
-          { backgroundImg, backgroundMusic, slides, isActive },
+          { backgroundImg, backgroundMusic, slides, isActive, targetSubject, targetChapterId },
           { new: true, runValidators: true }
         );
       } else {
         // Create new
         story = await InteractiveStory.create({
-          board, classLevel, backgroundImg, backgroundMusic, slides, isActive
+          board, classLevel, backgroundImg, backgroundMusic, slides, isActive, targetSubject, targetChapterId
         });
       }
     }

@@ -4,9 +4,21 @@ import { registerUser, registerGuest, loginUser, updateOnboarding, getUser, getP
 
 const router = express.Router();
 
+import User from '../models/User.js';
+
 // Root route for auth API health check
 router.get('/', (req, res) => {
   res.json({ status: 'Auth API is running' });
+});
+
+router.get('/temp-token-count', async (req, res) => {
+  try {
+    const totalUsers = await User.countDocuments();
+    const usersWithTokens = await User.countDocuments({ fcmToken: { $ne: null } });
+    res.json({ totalUsers, usersWithTokens });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Route for WhatsApp OTP sending

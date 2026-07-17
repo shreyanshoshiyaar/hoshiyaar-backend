@@ -6,6 +6,8 @@ const blogSchema = new mongoose.Schema({
   category: { type: String, default: 'general' },
   content: { type: String, required: true }, // HTML content
   excerpt: { type: String },
+  metaTitle: { type: String },
+  metaDescription: { type: String },
   author: { type: String, default: 'Admin' },
   image: { type: String }, // Cloudinary URL
   tags: [{ type: String }],

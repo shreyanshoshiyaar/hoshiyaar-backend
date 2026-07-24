@@ -7,8 +7,8 @@ import admin from 'firebase-admin';
 // Load environment variables
 config();
 
-const TITLE = "Time for today's adventure!";
-const BODY = "One lesson. Every day. That’s how real learning happens. Complete today’s lesson now! 🚀";
+const TITLE = "Learn something new today!";
+const BODY = "Your future self will thank you. Complete today's lesson and level up your knowledge! 💡";
 const ACTION_URL = "/learn"; // Journey page
 
 async function sendMassNotification() {
@@ -30,8 +30,9 @@ async function sendMassNotification() {
 
     console.log(`Found ${users.length} users with push tokens. Preparing to send...`);
 
-    // Extract just the valid tokens
-    const tokens = users.map(u => u.fcmToken).filter(t => t && t.length > 10);
+    // Extract just the valid tokens and remove duplicates (in case of multiple test accounts on one device)
+    const rawTokens = users.map(u => u.fcmToken).filter(t => t && t.length > 10);
+    const tokens = [...new Set(rawTokens)];
 
     if (tokens.length === 0) {
       console.log('❌ No valid tokens found after filtering.');

@@ -14,7 +14,7 @@ import Papa from 'papaparse';
 dotenv.config();
 
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
-const CSV_FILE = 'D:\\Copy of Plants-Eduvate - Final sheet upload akshit 9 july.csv';
+const CSV_FILE = 'D:\\\\Copy of Plants-Eduvate - Final sheet upload akshit 9 july (1).csv';
 
 async function run() {
   await mongoose.connect(MONGO_URI);

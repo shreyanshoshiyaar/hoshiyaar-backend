@@ -40,9 +40,23 @@ async function run() {
   console.log(`\n🔍 Parsing CSV: ${filePath}`);
   const csvContent = fs.readFileSync(filePath, 'utf8');
   
+  const headerCounts = {};
   const parsed = Papa.parse(csvContent, { 
     header: true, 
-    skipEmptyLines: true 
+    skipEmptyLines: true,
+    transformHeader: function(header, index) {
+      if (index === 0) {
+        for (const k in headerCounts) delete headerCounts[k];
+      }
+      const h = header.trim();
+      if (!headerCounts[h]) {
+        headerCounts[h] = 1;
+        return h;
+      } else {
+        // If it's a duplicate header (like a second 'Image 1'), rename it so we ignore it
+        return `IGNORE_DUPLICATE_${Math.random()}`;
+      }
+    }
   });
 
   if (parsed.errors.length > 0) {
@@ -101,9 +115,7 @@ async function run() {
       continue;
     }
 
-    if (moduleTitle.trim().toLowerCase() === 'difficult module') {
-      moduleTitle = 'HOT MODULE';
-    }
+    // Remove HOT MODULE replacement as per user request to keep difficult modules named literally
 
     let typeStr = rawType.toLowerCase().trim();
     if (typeStr === 'statement' || typeStr === 'text') typeStr = 'concept';

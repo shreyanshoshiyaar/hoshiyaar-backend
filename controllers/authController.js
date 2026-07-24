@@ -25,6 +25,13 @@ export const sendOtp = async (req, res) => {
     return res.status(400).json({ message: 'Phone number is required' });
   }
 
+  // --- TEST USER BYPASS ---
+  // Allow test numbers to bypass OTP sending so you can test the signup flow anytime
+  if (['9999999999', '9867735936'].includes(phone)) {
+    return res.status(200).json({ message: 'OTP sent successfully via WhatsApp' });
+  }
+  // ------------------------
+
   try {
     const User = (await import('../models/User.js')).default;
     
@@ -158,6 +165,13 @@ export const verifyOtp = async (req, res) => {
   if (!phone || !otp) {
     return res.status(400).json({ message: 'Phone and OTP are required' });
   }
+
+  // --- TEST USER BYPASS ---
+  // Allow test numbers to bypass OTP verification
+  if (['9999999999', '9867735936'].includes(phone) && otp === '123456') {
+    return res.status(200).json({ message: 'OTP verified successfully' });
+  }
+  // ------------------------
 
   try {
     const otpRecord = await Otp.findOne({ phone });

@@ -7,8 +7,8 @@ import admin from 'firebase-admin';
 // Load environment variables
 config();
 
-const TITLE = "Learn something new today!";
-const BODY = "Your future self will thank you. Complete today's lesson and level up your knowledge! 💡";
+const TITLE = "Don't break your learning streak! 🔥";
+const BODY = "Just 10 minutes a day keeps the exam stress away. Tap to complete today's module!";
 const ACTION_URL = "/learn"; // Journey page
 
 async function sendMassNotification() {

@@ -80,3 +80,66 @@ export const startInactivityCron = () => {
   });
   console.log('🚀 Inactivity Cron Job Scheduled (Daily 10:00 AM)');
 };
+
+// Cron Job: Run every day at 5:00 PM
+export const startDailyMassNotificationCron = () => {
+  // 5:00 PM is 17:00
+  cron.schedule('0 17 * * *', async () => {
+    console.log('⏰ Running Daily Mass Notification Cron...');
+
+    try {
+      const TITLE = "Don't break your learning streak! 🔥";
+      const BODY = "Just 10 minutes a day keeps the exam stress away. Tap to complete today's module!";
+      const ACTION_URL = "/learn";
+
+      const users = await User.find({ fcmToken: { $ne: null } }, 'name fcmToken');
+      if (users.length === 0) return;
+
+      const rawTokens = users.map(u => u.fcmToken).filter(t => t && t.length > 10);
+      const tokens = [...new Set(rawTokens)];
+      if (tokens.length === 0) return;
+
+      const batches = [];
+      for (let i = 0; i < tokens.length; i += 500) {
+        batches.push(tokens.slice(i, i + 500));
+      }
+
+      for (const batch of batches) {
+        const message = {
+          notification: { title: TITLE, body: BODY },
+          data: { url: ACTION_URL },
+          tokens: batch,
+          android: {
+            priority: 'high',
+            notification: {
+              channelId: 'study_reminders',
+              defaultSound: true,
+              defaultVibrateTimings: true,
+            }
+          }
+        };
+
+        const response = await admin.messaging().sendEachForMulticast(message);
+        
+        if (response.failureCount > 0) {
+          const failedTokens = [];
+          response.responses.forEach((resp, idx) => {
+            if (!resp.success) {
+              failedTokens.push(batch[idx]);
+            }
+          });
+          
+          await User.updateMany(
+            { fcmToken: { $in: failedTokens } },
+            { $set: { fcmToken: null } }
+          );
+        }
+      }
+      
+      console.log('✅ Daily Mass Notification completed.');
+    } catch (error) {
+      console.error('Error in Daily Mass Notification Cron:', error);
+    }
+  });
+  console.log('🚀 Daily Mass Notification Cron Scheduled (Daily 5:00 PM)');
+};

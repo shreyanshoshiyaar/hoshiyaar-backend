@@ -67,9 +67,14 @@ export const getUsersAnalytics = async (req, res) => {
       let useTime = 0;
       let lastActive = user.updatedAt || user.createdAt || new Date();
       let lastSessionModuleId = null;
+      let dynamicActiveDays = user.activeDaysCount || 1;
 
       if (timestamps.length > 0) {
         lastActive = new Date(timestamps[timestamps.length - 1]);
+        
+        // Calculate accurate active days from actual quiz attempts
+        const uniqueDays = new Set(timestamps.map(t => new Date(t).toDateString()));
+        dynamicActiveDays = Math.max(dynamicActiveDays, uniqueDays.size);
         
         // Find last session moduleId by looking at the chronologically last valid entry
         const sortedEntries = ledgerEntries
@@ -129,7 +134,7 @@ export const getUsersAnalytics = async (req, res) => {
         createdAt: user.createdAt,
         lastActive,
         lastSessionModuleId,
-        activeDaysCount: user.activeDaysCount || 1,
+        activeDaysCount: dynamicActiveDays,
       };
     });
 

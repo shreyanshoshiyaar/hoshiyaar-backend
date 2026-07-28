@@ -211,26 +211,49 @@ export const getUsersAnalytics = async (req, res) => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10); // top 10 schools
 
+    // Helper for IST time
+    const getISTDateHour = (dateInput) => {
+      const d = new Date(dateInput);
+      d.setUTCHours(d.getUTCHours() + 5);
+      d.setUTCMinutes(d.getUTCMinutes() + 30);
+      return {
+        dateStr: d.toISOString().split('T')[0],
+        hour: d.getUTCHours()
+      };
+    };
+
     // Signups & Activity Timeline (last 30 days)
     const timelineMap = {};
     for (let i = 29; i >= 0; i--) {
       const d = new Date();
-      d.setDate(d.getDate() - i);
+      d.setUTCHours(d.getUTCHours() + 5);
+      d.setUTCMinutes(d.getUTCMinutes() + 30);
+      // d.getUTCDate() works properly after adding hours
+      d.setUTCDate(d.getUTCDate() - i);
       const dateStr = d.toISOString().split('T')[0];
-      timelineMap[dateStr] = { date: dateStr, signups: 0, activeUsers: 0 };
+      
+      const hourly = Array.from({length: 24}, (_, idx) => ({
+        hour: `${String(idx).padStart(2, '0')}:00`,
+        signups: 0,
+        activeUsers: 0
+      }));
+      
+      timelineMap[dateStr] = { date: dateStr, signups: 0, activeUsers: 0, hourly };
     }
 
     users.forEach(u => {
       if (u.createdAt) {
-        const createdDate = new Date(u.createdAt).toISOString().split('T')[0];
-        if (timelineMap[createdDate]) {
-          timelineMap[createdDate].signups += 1;
+        const { dateStr, hour } = getISTDateHour(u.createdAt);
+        if (timelineMap[dateStr]) {
+          timelineMap[dateStr].signups += 1;
+          timelineMap[dateStr].hourly[hour].signups += 1;
         }
       }
       if (u.lastActive) {
-        const activeDate = new Date(u.lastActive).toISOString().split('T')[0];
-        if (timelineMap[activeDate]) {
-          timelineMap[activeDate].activeUsers += 1;
+        const { dateStr, hour } = getISTDateHour(u.lastActive);
+        if (timelineMap[dateStr]) {
+          timelineMap[dateStr].activeUsers += 1;
+          timelineMap[dateStr].hourly[hour].activeUsers += 1;
         }
       }
     });

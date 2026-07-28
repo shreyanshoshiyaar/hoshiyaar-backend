@@ -339,7 +339,26 @@ export const listChapters = async (req, res) => {
     if (userId) {
       const u = await User.findById(userId).select('subjectId');
       if (u && u.subjectId) {
-        const chapters = await Chapter.find({ subjectId: u.subjectId }).sort({ order: 1 });
+        let chapters = await Chapter.find({ subjectId: u.subjectId }).sort({ order: 1 });
+        
+        // Advanced sorting logic (Numerical chapter extraction + Coming Soon at end)
+        chapters.sort((a, b) => {
+          const titleA = a.title || '';
+          const titleB = b.title || '';
+          const aSoon = titleA.includes('(Coming Soon)');
+          const bSoon = titleB.includes('(Coming Soon)');
+          if (aSoon && !bSoon) return 1;
+          if (!aSoon && bSoon) return -1;
+          const getNum = (t) => {
+            const m = t.match(/Chapter\s+(\d+)/i);
+            return m ? parseInt(m[1], 10) : 999999;
+          };
+          const numA = getNum(titleA);
+          const numB = getNum(titleB);
+          if (numA !== numB) return numA - numB;
+          return (a.order || 0) - (b.order || 0);
+        });
+
         console.log(`[Curriculum] Found ${chapters.length} chapters for user subjectId`);
         return res.json(chapters);
       }
@@ -402,7 +421,26 @@ export const listChapters = async (req, res) => {
       query.isPublished = true;
     }
 
-    const chapters = await Chapter.find(query).sort({ order: 1 });
+    let chapters = await Chapter.find(query).sort({ order: 1 });
+    
+    // Advanced sorting logic (Numerical chapter extraction + Coming Soon at end)
+    chapters.sort((a, b) => {
+      const titleA = a.title || '';
+      const titleB = b.title || '';
+      const aSoon = titleA.includes('(Coming Soon)');
+      const bSoon = titleB.includes('(Coming Soon)');
+      if (aSoon && !bSoon) return 1;
+      if (!aSoon && bSoon) return -1;
+      const getNum = (t) => {
+        const m = t.match(/Chapter\s+(\d+)/i);
+        return m ? parseInt(m[1], 10) : 999999;
+      };
+      const numA = getNum(titleA);
+      const numB = getNum(titleB);
+      if (numA !== numB) return numA - numB;
+      return (a.order || 0) - (b.order || 0);
+    });
+
     console.log(`[Curriculum] Found ${chapters.length} chapters for subject (admin: ${isAdmin})`);
     return res.json(chapters);
   } catch (err) {

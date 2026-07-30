@@ -8,7 +8,6 @@ const DOMAIN = 'https://hoshiyaar.info';
 router.get('/', async (req, res) => {
   try {
     const blogs = await Blog.find({}, '_id category slug updatedAt').lean();
-    const modules = await Module.find({}, '_id').lean(); // Assuming module ID is used in routes
 
     let sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
 
@@ -38,10 +37,6 @@ router.get('/', async (req, res) => {
       sitemap += `  <url>\n    <loc>${blogUrl}</loc>\n    <lastmod>${lastMod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>\n`;
     });
 
-    // Dynamic "Chapter/Module" Routes
-    modules.forEach(mod => {
-      sitemap += `  <url>\n    <loc>${DOMAIN}/learn/module/${mod._id}</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
-    });
 
     sitemap += `</urlset>`;
 

@@ -361,6 +361,46 @@ export const registerGuest = async (req, res) => {
   }
 };
 
+// @desc    Check if a user exists by phone number
+// @route   POST /api/auth/check-user
+// @access  Public
+export const checkUser = async (req, res) => {
+  const { phone } = req.body;
+
+  if (!phone) {
+    return res.status(400).json({ message: 'Please provide a phone number' });
+  }
+
+  try {
+    const User = (await import('../models/User.js')).default;
+    const cleanPhone = String(phone).trim();
+    let formattedPhone = cleanPhone.replace(/\D/g, '');
+    let tenDigitPhone = formattedPhone.length > 10 ? formattedPhone.slice(-10) : formattedPhone;
+    let ninetyOnePhone = `91${tenDigitPhone}`;
+    let plusNinetyOnePhone = `+91${tenDigitPhone}`;
+
+    const user = await User.findOne({ 
+      $or: [
+        { phone: cleanPhone },
+        { phone: tenDigitPhone },
+        { phone: ninetyOnePhone },
+        { phone: plusNinetyOnePhone }
+      ]
+    });
+
+    if (user) {
+      // User exists
+      return res.status(200).json({ exists: true, message: 'User found', name: user.name });
+    } else {
+      // User does not exist
+      return res.status(200).json({ exists: false, message: 'User not found' });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
 // @desc    Authenticate user & get token
 // @route   POST /api/auth/login
 // @access  Public

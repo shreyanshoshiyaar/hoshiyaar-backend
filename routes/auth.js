@@ -1,6 +1,6 @@
 import express from 'express';
 // Corrected the import to use named imports directly
-import { registerUser, registerGuest, loginUser, updateOnboarding, getUser, getProgress, updateProgress, checkUsername, verifyStorage, getModuleProgress, getCompletedModules, deleteUser, sendOtp, verifyOtp, resetPassword, updateActivity } from '../controllers/authController.js';
+import { registerUser, registerGuest, loginUser, updateOnboarding, getUser, getProgress, updateProgress, checkUsername, checkUser, verifyStorage, getModuleProgress, getCompletedModules, deleteUser, sendOtp, verifyOtp, resetPassword, updateActivity } from '../controllers/authController.js';
 
 const router = express.Router();
 
@@ -38,6 +38,9 @@ router.post('/register', registerUser);
 
 // Route for anonymous guest registration
 router.post('/register-guest', registerGuest);
+
+// Route to check if user exists by phone
+router.post('/check-user', checkUser);
 
 // Route for user login
 router.post('/login', loginUser);

@@ -20,6 +20,13 @@ router.get('/:key', async (req, res) => {
     
     let setting = await SystemSettings.findOne({ key });
     // If not found, create a default one for known keys
+    if (!setting && key === 'maintenance_mode') {
+      setting = await SystemSettings.create({
+        key: 'maintenance_mode',
+        value: false,
+        description: "If true, blocks the app and displays a maintenance screen"
+      });
+    }
     if (!setting && key === 'min_android_version') {
       setting = await SystemSettings.create({
         key: 'min_android_version',

@@ -14,7 +14,7 @@ import Papa from 'papaparse';
 dotenv.config();
 
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
-const CSV_FILE = 'D:\\\\Forces - Akshit Upload 16th July.csv';
+const CSV_FILE = 'D:\\\\Forces - Akshit Upload 29th July.csv';
 
 async function run() {
   await mongoose.connect(MONGO_URI);
@@ -56,8 +56,13 @@ async function run() {
       classId = cls._id;
       subjectId = subject._id;
 
-      targetChapter = await Chapter.create({ subjectId: subject._id, title: chapterTitle, order: 5, isPublished: false });
+      targetChapter = await Chapter.create({ subjectId: subject._id, title: chapterTitle, order: 5, isPublished: true });
   } else {
+      // If it exists, make sure it is set to published
+      if (!targetChapter.isPublished) {
+          targetChapter.isPublished = true;
+          await targetChapter.save();
+      }
       console.log(`✅ Found Target Chapter: ${targetChapter.title}`);
       
       // Enforce admins only mode

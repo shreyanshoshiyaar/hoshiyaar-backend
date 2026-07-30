@@ -32,7 +32,15 @@ function generateSEO(blogTitle, category) {
   // Capitalize first letter of each word
   topic = topic.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
-  const metaTitle = `${topic} Class ${classNum} – CBSE Notes & MCQs`.substring(0, 60);
+  const suffix = ` Class ${classNum} – CBSE Notes & MCQs`;
+  // We want the total length to be max 60.
+  const maxTopicLength = 60 - suffix.length;
+  
+  if (topic.length > maxTopicLength) {
+    topic = topic.substring(0, maxTopicLength).trim();
+  }
+
+  const metaTitle = `${topic}${suffix}`;
   const metaDescription = `Learn CBSE Class ${classNum} Science with simple notes on ${topic}. Practice free MCQs on the Hoshiyaar app.`.substring(0, 155);
 
   return { metaTitle, metaDescription };

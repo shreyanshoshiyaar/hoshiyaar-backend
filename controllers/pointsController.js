@@ -207,7 +207,7 @@ export const backfillTotals = async (req, res) => {
 // Get leaderboard for a specific school or global (all users)
 export const getLeaderboard = async (req, res) => {
   try {
-    const { school, timeframe = 'total' } = req.query;
+    const { school, timeframe = 'total', metric = 'points' } = req.query;
 
     // Normalize school filter: ignore 'null' or 'undefined' strings from frontend
     const isGlobal = !school || school === 'null' || school === 'undefined';
@@ -215,11 +215,24 @@ export const getLeaderboard = async (req, res) => {
     
     let leaderboard = [];
 
-    if (timeframe === 'total') {
+    if (metric === 'streak') {
+      const users = await User.find(filter)
+        .sort({ currentStreak: -1 })
+        .limit(100)
+        .select('username name school currentStreak')
+        .lean();
+
+      leaderboard = users.map(user => ({
+        username: user.username,
+        name: user.name || user.username,
+        school: user.school,
+        currentStreak: Math.max(0, Number(user.currentStreak || 0))
+      }));
+    } else if (timeframe === 'total') {
       // High-performance direct query for total points
       const users = await User.find(filter)
         .sort({ totalPoints: -1 })
-        .limit(50)
+        .limit(100)
         .select('username name school totalPoints')
         .lean();
 
@@ -257,7 +270,7 @@ export const getLeaderboard = async (req, res) => {
           }
         },
         { $sort: { totalPoints: -1 } },
-        { $limit: 50 }
+        { $limit: 100 }
       ];
 
       const results = await User.aggregate(pipeline);
@@ -281,18 +294,42 @@ export const getLeaderboard = async (req, res) => {
           username: user.username,
           name: user.name || user.username,
           school: user.school,
-          totalPoints: 0 // Show 0 for weekly since no one earned any
+          totalPoints: 0 // Show 0 for weekly since they haven't earned any this week
         }));
       }
     }
 
-    return res.json({
-      school: isGlobal ? "Global" : school,
-      timeframe,
-      leaderboard
-    });
+    return res.json({ leaderboard });
   } catch (err) {
     console.error('[points] leaderboard error', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Sync streak from frontend to backend
+export const syncStreak = async (req, res) => {
+  try {
+    const { userId, streak } = req.body;
+    if (!userId || typeof streak !== 'number') {
+      return res.status(400).json({ message: 'Missing userId or streak' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Only update if the local streak is higher, or if we want to trust the frontend entirely.
+    // Trust the frontend for now, but ensure we don't go backwards unintentionally.
+    if (streak > (user.currentStreak || 0) || streak === 1) { // allow reset to 1
+      user.currentStreak = streak;
+      user.lastStreakDate = new Date();
+      await user.save();
+    }
+
+    return res.json({ success: true, currentStreak: user.currentStreak });
+  } catch (err) {
+    console.error('[points] syncStreak error', err);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };

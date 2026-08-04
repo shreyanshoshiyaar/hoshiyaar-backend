@@ -141,6 +141,14 @@ const userSchema = mongoose.Schema(
       noModule30mSent: { type: Boolean, default: false },
       startedNotCompleted2hSent: { type: Boolean, default: false },
       inactive24hSent: { type: Boolean, default: false }
+    },
+    currentStreak: {
+      type: Number,
+      default: 0
+    },
+    lastStreakDate: {
+      type: Date,
+      default: null
     }
   },
   {

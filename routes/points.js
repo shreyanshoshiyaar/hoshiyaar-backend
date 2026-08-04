@@ -1,5 +1,5 @@
 import express from 'express';
-import { awardPoints, getSummary, backfillTotals, getLeaderboard, getSchools, revertSessionPoints } from '../controllers/pointsController.js';
+import { awardPoints, getSummary, backfillTotals, getLeaderboard, getSchools, revertSessionPoints, syncStreak } from '../controllers/pointsController.js';
 
 const router = express.Router();
 
@@ -21,6 +21,7 @@ router.get('/schools', getSchools);
 // Admin backfill
 router.post('/backfill', backfillTotals);
 
+// Sync streak
+router.post('/sync-streak', syncStreak);
+
 export default router;
-
-

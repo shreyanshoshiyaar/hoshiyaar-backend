@@ -1,6 +1,7 @@
 import express from 'express';
 // Corrected the import to use named imports directly
-import { registerUser, registerGuest, loginUser, updateOnboarding, getUser, getProgress, updateProgress, checkUsername, checkUser, verifyStorage, getModuleProgress, getCompletedModules, deleteUser, sendOtp, verifyOtp, resetPassword, updateActivity } from '../controllers/authController.js';
+import { registerUser, registerGuest, loginUser, updateOnboarding, getUser, getProgress, updateProgress, checkUsername, checkUser, verifyStorage, getModuleProgress, getCompletedModules, deleteUser, sendOtp, verifyOtp, resetPassword, updateActivity, updateFunnelStage } from '../controllers/authController.js';
+
 
 const router = express.Router();
 
@@ -32,6 +33,9 @@ router.post('/reset-password', resetPassword);
 
 // Route to update user activity and FCM token
 router.post('/update-activity', updateActivity);
+
+// Route to update user funnel stage
+router.patch('/funnel-stage', updateFunnelStage);
 
 // Route for user registration
 router.post('/register', registerUser);

@@ -70,6 +70,11 @@ const userSchema = mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    funnelStage: {
+      type: String,
+      default: 'signed_up',
+      trim: true,
+    },
     school: {
       type: String,
       default: null,

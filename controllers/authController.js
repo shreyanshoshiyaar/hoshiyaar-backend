@@ -15,6 +15,24 @@ const generateToken = (id, role) => {
   });
 };
 
+// @desc    Update funnel stage
+// @route   PATCH /api/auth/funnel-stage
+// @access  Public
+export const updateFunnelStage = async (req, res) => {
+  const { userId, stage } = req.body;
+  
+  if (!userId || !stage) {
+    return res.status(400).json({ message: 'User ID and stage are required' });
+  }
+
+  try {
+    await User.findByIdAndUpdate(userId, { funnelStage: stage });
+    res.status(200).json({ message: 'Funnel stage updated' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error updating funnel stage', error: error.message });
+  }
+};
+
 // @desc    Send OTP via WhatsApp
 // @route   POST /api/auth/send-otp
 // @access  Public

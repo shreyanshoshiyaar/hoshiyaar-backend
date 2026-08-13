@@ -7,8 +7,19 @@ import path from 'path';
 // Initialize Firebase Admin
 export const initFirebase = () => {
   try {
-    const serviceAccountPath = path.resolve('config/firebase-service-account.json');
-    const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
+    let serviceAccount;
+
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
+      // Decode from base64 (useful for Railway deployment)
+      const decoded = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8');
+      serviceAccount = JSON.parse(decoded);
+      console.log('✅ Loaded Firebase credentials from Environment Variable');
+    } else {
+      // Fallback to local file
+      const serviceAccountPath = path.resolve('config/firebase-service-account.json');
+      serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
+      console.log('✅ Loaded Firebase credentials from Local File');
+    }
 
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
@@ -81,15 +92,15 @@ export const startInactivityCron = () => {
   console.log('🚀 Inactivity Cron Job Scheduled (Daily 10:00 AM)');
 };
 
-// Cron Job: Run every day at 5:00 PM
+// Cron Job: Run every day at 7:00 PM IST
 export const startDailyMassNotificationCron = () => {
-  // 5:00 PM is 17:00
-  cron.schedule('0 17 * * *', async () => {
-    console.log('⏰ Running Daily Mass Notification Cron...');
+  // 7:00 PM IST
+  cron.schedule('0 19 * * *', async () => {
+    console.log('⏰ Running Daily Mass Notification Cron (7 PM IST)...');
 
     try {
-      const TITLE = "Don't break your learning streak! 🔥";
-      const BODY = "Just 10 minutes a day keeps the exam stress away. Tap to complete today's module!";
+      const TITLE = "Keep your Hoshiyaar streak alive! 🔥";
+      const BODY = "Consistency is the key to mastering Science. Tap to jump back in and save your streak!";
       const ACTION_URL = "/learn";
 
       const users = await User.find({ fcmToken: { $ne: null } }, 'name fcmToken');
@@ -140,6 +151,8 @@ export const startDailyMassNotificationCron = () => {
     } catch (error) {
       console.error('Error in Daily Mass Notification Cron:', error);
     }
+  }, {
+    timezone: 'Asia/Kolkata'
   });
-  console.log('🚀 Daily Mass Notification Cron Scheduled (Daily 5:00 PM)');
+  console.log('🚀 Daily Mass Notification Cron Scheduled (Daily 7:00 PM IST)');
 };

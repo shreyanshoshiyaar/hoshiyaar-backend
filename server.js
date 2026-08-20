@@ -43,7 +43,7 @@ initFirebase();
 // startInactivityCron();
 
 // Start the WhatsApp Nudge Cron Job
-// startWhatsappNudgeCron();
+startWhatsappNudgeCron();
 
 // Start the Daily 5:00 PM Mass Notification Cron Job
 startDailyMassNotificationCron();

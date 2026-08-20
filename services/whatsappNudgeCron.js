@@ -11,6 +11,19 @@ export const startWhatsappNudgeCron = () => {
 
     try {
       const now = new Date();
+
+      // Calculate if current time is between 5 PM and 10 PM IST
+      const currentUTCHour = now.getUTCHours();
+      const currentUTCMinute = now.getUTCMinutes();
+      // IST is UTC + 5:30. 
+      // 5:00 PM IST = 11:30 AM UTC
+      // 10:00 PM IST = 4:30 PM UTC
+      const currentMinutesSinceMidnightUTC = (currentUTCHour * 60) + currentUTCMinute;
+      const windowStartMinutes = (11 * 60) + 30; // 11:30 AM UTC
+      const windowEndMinutes = (16 * 60) + 30; // 4:30 PM UTC
+      
+      const isEveningWindow = currentMinutesSinceMidnightUTC >= windowStartMinutes && currentMinutesSinceMidnightUTC <= windowEndMinutes;
+
       const thirtyMinsAgo = new Date(now.getTime() - 30 * 60000);
       const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60000);
       const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60000);
@@ -84,54 +97,56 @@ export const startWhatsappNudgeCron = () => {
         } catch (e) { console.error('Failed to send incomplete mission nudge to', user.phone); }
       }
 
-      // 3. STREAK ABOUT TO BREAK (24-hour inactive) nudge
-      const inactive24hUsers = await User.find({
-        ...queryFilter,
-        lastActiveAt: { $lte: twentyFourHoursAgo },
-        'whatsappNudges.inactive24hSent': false,
-        chaptersProgress: { $not: { $size: 0 } } // Make sure they actually used the app at least once
-      });
+      // 3 & 4. INACTIVE NUDGES - ONLY RUN BETWEEN 5 PM and 10 PM IST
+      if (isEveningWindow) {
+        // 3. STREAK ABOUT TO BREAK (24-hour inactive) nudge
+        const inactive24hUsers = await User.find({
+          ...queryFilter,
+          lastActiveAt: { $lte: twentyFourHoursAgo },
+          'whatsappNudges.inactive24hSent': false,
+          chaptersProgress: { $not: { $size: 0 } } // Make sure they actually used the app at least once
+        });
 
-      for (const user of inactive24hUsers) {
-        try {
-          const result = await sendMetaWhatsAppTemplate({
-            to: user.phone,
-            templateName: 'nudge_streak_break',
-            languageCode: 'en',
-            templateParams: [user.name || 'Learner'],
-            headerImage: 'https://res.cloudinary.com/fhscvc7p/image/upload/v1787130099/1787127547462-01a01919-1bca-7c07-a027-759c7328fc12_1_h04wxn.png'
-          });
-          if (result) {
-            user.whatsappNudges.inactive24hSent = true;
-            await user.save({ validateBeforeSave: false });
-          }
-        } catch (e) { console.error('Failed to send streak break nudge to', user.phone); }
+        for (const user of inactive24hUsers) {
+          try {
+            const result = await sendMetaWhatsAppTemplate({
+              to: user.phone,
+              templateName: 'nudge_streak_break',
+              languageCode: 'en',
+              templateParams: [user.name || 'Learner'],
+              headerImage: 'https://res.cloudinary.com/fhscvc7p/image/upload/v1787130099/1787127547462-01a01919-1bca-7c07-a027-759c7328fc12_1_h04wxn.png'
+            });
+            if (result) {
+              user.whatsappNudges.inactive24hSent = true;
+              await user.save({ validateBeforeSave: false });
+            }
+          } catch (e) { console.error('Failed to send streak break nudge to', user.phone); }
+        }
+
+        // 4. 3 DAYS INACTIVE nudge
+        const inactive3DaysUsers = await User.find({
+          ...queryFilter,
+          lastActiveAt: { $lte: seventyTwoHoursAgo },
+          'whatsappNudges.inactive3DaysSent': false,
+          chaptersProgress: { $not: { $size: 0 } }
+        });
+
+        for (const user of inactive3DaysUsers) {
+          try {
+            const result = await sendMetaWhatsAppTemplate({
+              to: user.phone,
+              templateName: 'nudge_3_days_inactive',
+              languageCode: 'en',
+              templateParams: [user.name || 'Learner'],
+              headerImage: 'https://res.cloudinary.com/fhscvc7p/image/upload/v1787130099/1787127547462-01a01919-1bca-7c07-a027-759c7328fc12_1_h04wxn.png'
+            });
+            if (result) {
+              user.whatsappNudges.inactive3DaysSent = true;
+              await user.save({ validateBeforeSave: false });
+            }
+          } catch (e) { console.error('Failed to send 3 days inactive nudge to', user.phone); }
+        }
       }
-
-      // 4. 3 DAYS INACTIVE nudge
-      const inactive3DaysUsers = await User.find({
-        ...queryFilter,
-        lastActiveAt: { $lte: seventyTwoHoursAgo },
-        'whatsappNudges.inactive3DaysSent': false,
-        chaptersProgress: { $not: { $size: 0 } }
-      });
-
-      for (const user of inactive3DaysUsers) {
-        try {
-          const result = await sendMetaWhatsAppTemplate({
-            to: user.phone,
-            templateName: 'nudge_3_days_inactive',
-            languageCode: 'en',
-            templateParams: [user.name || 'Learner'],
-            headerImage: 'https://res.cloudinary.com/fhscvc7p/image/upload/v1787130099/1787127547462-01a01919-1bca-7c07-a027-759c7328fc12_1_h04wxn.png'
-          });
-          if (result) {
-            user.whatsappNudges.inactive3DaysSent = true;
-            await user.save({ validateBeforeSave: false });
-          }
-        } catch (e) { console.error('Failed to send 3 days inactive nudge to', user.phone); }
-      }
-
     } catch (error) {
       console.error('Error in WhatsApp Nudge Cron:', error);
     }

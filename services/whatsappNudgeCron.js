@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import User from '../models/User.js';
-import { sendAiSensyTemplate } from './whatsappService.js';
+import { sendMetaWhatsAppTemplate } from './whatsappService.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -14,6 +14,7 @@ export const startWhatsappNudgeCron = () => {
       const thirtyMinsAgo = new Date(now.getTime() - 30 * 60000);
       const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60000);
       const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60000);
+      const seventyTwoHoursAgo = new Date(now.getTime() - 72 * 60 * 60000);
 
       // Testing Filter
       const testNumbersStr = process.env.TEST_WHATSAPP_NUMBERS || "";
@@ -22,11 +23,10 @@ export const startWhatsappNudgeCron = () => {
       
       if (testNumbers.length > 0) {
         queryFilter.phone = { $in: testNumbers };
-        console.log(`⚠️ AiSensy Nudges restricted to test numbers: ${testNumbers.join(', ')}`);
+        console.log(`⚠️ Meta WhatsApp Nudges restricted to test numbers: ${testNumbers.join(', ')}`);
       }
 
-      // 1. No module started nudge after 30 minutes
-      // User registered > 30 mins ago, chaptersProgress is empty or 0
+      // 1. 0 MIN (No module started) nudge after 30 minutes
       const noModuleUsers = await User.find({
         ...queryFilter,
         createdAt: { $lte: thirtyMinsAgo },
@@ -39,22 +39,21 @@ export const startWhatsappNudgeCron = () => {
 
       for (const user of noModuleUsers) {
         try {
-          await sendAiSensyTemplate({
+          const result = await sendMetaWhatsAppTemplate({
             to: user.phone,
-            templateName: 'no_module_started',
-            userName: user.name || 'Learner',
-            customContactFields: { ParentName: user.name, Class: user.classLevel || '' },
-            templateParams: [user.name || 'Learner'] 
+            templateName: 'nudge_0_min',
+            languageCode: 'en',
+            templateParams: [user.name || 'Learner'],
+            headerImage: 'https://res.cloudinary.com/fhscvc7p/image/upload/v1787130099/1787127547462-01a01919-1bca-7c07-a027-759c7328fc12_1_h04wxn.png'
           });
-          user.whatsappNudges.noModule30mSent = true;
-          await user.save({ validateBeforeSave: false });
-        } catch (e) { console.error('Failed to send 30m nudge to', user.phone); }
+          if (result) {
+            user.whatsappNudges.noModule30mSent = true;
+            await user.save({ validateBeforeSave: false });
+          }
+        } catch (e) { console.error('Failed to send 0 min nudge to', user.phone); }
       }
 
-      // 2. Started but not completed nudge after 2 hours
-      // User chaptersProgress exists, but no modules are fully marked as completed, updated > 2 hours ago
-      // Actually, an easier check is if they have progress, but 'conceptCompleted' and 'quizCompleted' are false
-      // and updatedAt is > 2 hours ago.
+      // 2. MISSION STARTED (Started but not completed) nudge after 2 hours
       const startedNotCompletedUsers = await User.find({
         ...queryFilter,
         'whatsappNudges.startedNotCompleted2hSent': false,
@@ -71,19 +70,21 @@ export const startWhatsappNudgeCron = () => {
 
       for (const user of startedNotCompletedUsers) {
         try {
-          await sendAiSensyTemplate({
+          const result = await sendMetaWhatsAppTemplate({
             to: user.phone,
-            templateName: 'module_started_incomplete',
-            userName: user.name || 'Learner',
-            customContactFields: { ParentName: user.name, Class: user.classLevel || '' },
-            templateParams: [user.name || 'Learner']
+            templateName: 'nudge_mission_incomplete',
+            languageCode: 'en',
+            templateParams: [user.name || 'Learner'],
+            headerImage: 'https://res.cloudinary.com/fhscvc7p/image/upload/v1787130099/1787127547462-01a01919-1bca-7c07-a027-759c7328fc12_1_h04wxn.png'
           });
-          user.whatsappNudges.startedNotCompleted2hSent = true;
-          await user.save({ validateBeforeSave: false });
-        } catch (e) { console.error('Failed to send 2h nudge to', user.phone); }
+          if (result) {
+            user.whatsappNudges.startedNotCompleted2hSent = true;
+            await user.save({ validateBeforeSave: false });
+          }
+        } catch (e) { console.error('Failed to send incomplete mission nudge to', user.phone); }
       }
 
-      // 3. 24-hour inactive user reactivation message
+      // 3. STREAK ABOUT TO BREAK (24-hour inactive) nudge
       const inactive24hUsers = await User.find({
         ...queryFilter,
         lastActiveAt: { $lte: twentyFourHoursAgo },
@@ -93,16 +94,42 @@ export const startWhatsappNudgeCron = () => {
 
       for (const user of inactive24hUsers) {
         try {
-          await sendAiSensyTemplate({
+          const result = await sendMetaWhatsAppTemplate({
             to: user.phone,
-            templateName: 'reactivation_24h_inactive',
-            userName: user.name || 'Learner',
-            customContactFields: { ParentName: user.name, Class: user.classLevel || '', LastActiveDate: user.lastActiveAt },
-            templateParams: [user.name || 'Learner']
+            templateName: 'nudge_streak_break',
+            languageCode: 'en',
+            templateParams: [user.name || 'Learner'],
+            headerImage: 'https://res.cloudinary.com/fhscvc7p/image/upload/v1787130099/1787127547462-01a01919-1bca-7c07-a027-759c7328fc12_1_h04wxn.png'
           });
-          user.whatsappNudges.inactive24hSent = true;
-          await user.save({ validateBeforeSave: false });
-        } catch (e) { console.error('Failed to send 24h nudge to', user.phone); }
+          if (result) {
+            user.whatsappNudges.inactive24hSent = true;
+            await user.save({ validateBeforeSave: false });
+          }
+        } catch (e) { console.error('Failed to send streak break nudge to', user.phone); }
+      }
+
+      // 4. 3 DAYS INACTIVE nudge
+      const inactive3DaysUsers = await User.find({
+        ...queryFilter,
+        lastActiveAt: { $lte: seventyTwoHoursAgo },
+        'whatsappNudges.inactive3DaysSent': false,
+        chaptersProgress: { $not: { $size: 0 } }
+      });
+
+      for (const user of inactive3DaysUsers) {
+        try {
+          const result = await sendMetaWhatsAppTemplate({
+            to: user.phone,
+            templateName: 'nudge_3_days_inactive',
+            languageCode: 'en',
+            templateParams: [user.name || 'Learner'],
+            headerImage: 'https://res.cloudinary.com/fhscvc7p/image/upload/v1787130099/1787127547462-01a01919-1bca-7c07-a027-759c7328fc12_1_h04wxn.png'
+          });
+          if (result) {
+            user.whatsappNudges.inactive3DaysSent = true;
+            await user.save({ validateBeforeSave: false });
+          }
+        } catch (e) { console.error('Failed to send 3 days inactive nudge to', user.phone); }
       }
 
     } catch (error) {

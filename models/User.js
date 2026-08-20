@@ -145,7 +145,8 @@ const userSchema = mongoose.Schema(
       welcomeSent: { type: Boolean, default: false },
       noModule30mSent: { type: Boolean, default: false },
       startedNotCompleted2hSent: { type: Boolean, default: false },
-      inactive24hSent: { type: Boolean, default: false }
+      inactive24hSent: { type: Boolean, default: false },
+      inactive3DaysSent: { type: Boolean, default: false }
     },
     currentStreak: {
       type: Number,
@@ -154,6 +155,21 @@ const userSchema = mongoose.Schema(
     lastStreakDate: {
       type: Date,
       default: null
+    },
+    region: {
+      type: String,
+      default: null,
+      trim: true
+    },
+    city: {
+      type: String,
+      default: null,
+      trim: true
+    },
+    country: {
+      type: String,
+      default: null,
+      trim: true
     }
   },
   {

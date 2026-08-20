@@ -2,24 +2,21 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const AISENSY_API_KEY = process.env.AISENSY_API_KEY;
-const API_URL = 'https://backend.aisensy.com/campaign/t1/api/v2';
+const META_ACCESS_TOKEN = process.env.WHATSAPP_PERMANENT_TOKEN || process.env.META_ACCESS_TOKEN;
+const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || process.env.META_PHONE_NUMBER_ID;
 
 /**
- * Sends a WhatsApp Template via AiSensy API
- * @param {string} to - Destination phone number (e.g. "919999999999")
- * @param {string} templateName - Name of the approved template
- * @param {string} userName - Name of the user
- * @param {object} customContactFields - Object mapping to custom fields in AiSensy
- * @param {array} templateParams - Ordered array of parameters for the template body/buttons
- * @returns {Promise<object>} response from AiSensy
+ * Sends a WhatsApp Template via official Meta Graph API
+ * @param {object} params
+ * @param {string} params.to - Destination phone number
+ * @param {string} params.templateName - Name of the approved template
+ * @param {string} params.languageCode - Language code of template (default 'en')
+ * @param {array} params.templateParams - Array of variables for the body (e.g. ['Akshit'])
+ * @param {string} params.headerImage - Optional URL of an image to send in the header
  */
-export const sendAiSensyTemplate = async ({ to, templateName, userName = "Learner", customContactFields = {}, templateParams = [] }) => {
-  // AiSensy is temporarily disabled as per user request
-  return null;
-
-  if (!AISENSY_API_KEY) {
-    console.warn("⚠️ AISENSY_API_KEY is not configured in .env. Skipping WhatsApp message.");
+export const sendMetaWhatsAppTemplate = async ({ to, templateName, languageCode = 'en', templateParams = [], headerImage = null }) => {
+  if (!META_ACCESS_TOKEN || !PHONE_NUMBER_ID) {
+    console.warn("⚠️ WhatsApp Meta Credentials are not configured in .env. Skipping WhatsApp message.");
     return null;
   }
 
@@ -34,26 +31,56 @@ export const sendAiSensyTemplate = async ({ to, templateName, userName = "Learne
   }
 
   const payload = {
-    apiKey: AISENSY_API_KEY,
-    campaignName: templateName, // AiSensy uses campaignName for API triggering
-    destination: formattedPhone,
-    userName: userName,
-    source: customContactFields.SignupSource || 'website_api',
-    templateParams: templateParams,
-    contactFields: customContactFields
+    messaging_product: "whatsapp",
+    to: formattedPhone,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: languageCode },
+      components: []
+    }
   };
 
+  // Add header image if provided
+  if (headerImage) {
+    payload.template.components.push({
+      type: "header",
+      parameters: [
+        {
+          type: "image",
+          image: { link: headerImage }
+        }
+      ]
+    });
+  }
+
+  // Add body parameters if provided
+  if (templateParams && templateParams.length > 0) {
+    payload.template.components.push({
+      type: "body",
+      parameters: templateParams.map(param => ({
+        type: "text",
+        text: param
+      }))
+    });
+  }
+
   try {
-    const response = await axios.post(API_URL, payload, {
+    const response = await axios.post(`https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`, payload, {
       headers: {
+        'Authorization': `Bearer ${META_ACCESS_TOKEN}`,
         'Content-Type': 'application/json'
       }
     });
 
-    console.log(`✅ AiSensy WhatsApp template '${templateName}' sent to ${formattedPhone}.`);
+    console.log(`✅ Meta WhatsApp template '${templateName}' sent to ${formattedPhone}.`);
     return response.data;
   } catch (error) {
-    console.error(`❌ Error sending AiSensy template '${templateName}':`, error.response?.data || error.message);
+    if (error.response) {
+      console.error(`❌ Error sending Meta template '${templateName}':`, error.response.data);
+    } else {
+      console.error(`❌ Network Error sending Meta template '${templateName}':`, error.message);
+    }
     return null;
   }
 };

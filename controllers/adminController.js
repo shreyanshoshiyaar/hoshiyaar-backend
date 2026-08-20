@@ -122,6 +122,9 @@ export const getUsersAnalytics = async (req, res) => {
         email: user.email || null,
         phone: user.phone || null,
         school: user.school || 'Self Study / Individual',
+        region: user.region || null,
+        city: user.city || null,
+        country: user.country || null,
         classLevel: user.classLevel || 'Not Specified',
         isGuest: !!user.isGuest,
         onboardingCompleted: !!user.onboardingCompleted,
@@ -135,6 +138,7 @@ export const getUsersAnalytics = async (req, res) => {
         lastActive,
         lastSessionModuleId,
         activeDaysCount: dynamicActiveDays,
+        whatsappNudges: user.whatsappNudges || {}
       };
     });
 
@@ -169,6 +173,23 @@ export const getUsersAnalytics = async (req, res) => {
     
     const avgUseTime = totalUsers > 0 ? Math.round(users.reduce((acc, u) => acc + u.useTime, 0) / totalUsers) : 0;
 
+    // WhatsApp Nudges Aggregation
+    let whatsappStats = {
+      nudge_0_min: 0,
+      nudge_mission_incomplete: 0,
+      nudge_streak_break: 0,
+      nudge_3_days_inactive: 0,
+    };
+
+    users.forEach(u => {
+      if (u.whatsappNudges) {
+        if (u.whatsappNudges.noModule30mSent) whatsappStats.nudge_0_min++;
+        if (u.whatsappNudges.startedNotCompleted2hSent) whatsappStats.nudge_mission_incomplete++;
+        if (u.whatsappNudges.inactive24hSent) whatsappStats.nudge_streak_break++;
+        if (u.whatsappNudges.inactive3DaysSent) whatsappStats.nudge_3_days_inactive++;
+      }
+    });
+
     const stats = {
       totalUsers,
       guestsCount,
@@ -177,6 +198,7 @@ export const getUsersAnalytics = async (req, res) => {
       onboardingRate,
       avgAccuracy,
       avgUseTime,
+      whatsappStats,
     };
 
     // 4. Group data for Charts (Grade level, School and Timelines)
@@ -273,6 +295,20 @@ export const getUsersAnalytics = async (req, res) => {
         value: platformMap[k]
       }));
 
+    // Region Distribution
+    const regionMap = {};
+    users.forEach(u => {
+      if (u.region) {
+        regionMap[u.region] = (regionMap[u.region] || 0) + 1;
+      }
+    });
+    const regionDistribution = Object.keys(regionMap)
+      .map(region => ({
+        name: region,
+        value: regionMap[region],
+      }))
+      .sort((a, b) => b.value - a.value);
+
     res.json({
       success: true,
       stats,
@@ -281,10 +317,12 @@ export const getUsersAnalytics = async (req, res) => {
         schoolDistribution,
         activeTimeline,
         platformDistribution,
+        regionDistribution,
       },
       users,
     });
   } catch (error) {
+    console.error('🔥 Error in getUsersAnalytics:', error);
     res.status(500).json({ message: `Server Error: ${error.message}` });
   }
 };

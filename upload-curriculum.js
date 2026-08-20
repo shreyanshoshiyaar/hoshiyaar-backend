@@ -93,7 +93,7 @@ async function run() {
     const subjectName = getCol(row, ['subject']) || 'Science';
     const chapterTitle = getCol(row, ['chapter']);
     const unitTitle = getCol(row, ['unit_title', 'unit']) || 'Default Unit';
-    let moduleTitle = getCol(row, ['lesson_title', 'module']);
+    let moduleTitle = getCol(row, ['lesson_title', 'module', 'lesson']);
     let rawType = getCol(row, ['type']);
     
     const isRowEmpty = Object.values(row).every(val => !String(val).trim());

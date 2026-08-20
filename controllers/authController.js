@@ -224,7 +224,7 @@ export const verifyOtp = async (req, res) => {
 // @route   POST /api/auth/register
 // @access  Public
 export const registerUser = async (req, res) => {
-  const { username, name, email = null, phone = null, password = null, age, dateOfBirth, classLevel = null, board = null, classTitle = null, subject = null, chapter = null, platform = 'unknown', whatsappOptIn = true } = req.body;
+  const { username, name, email = null, phone = null, password = null, age, dateOfBirth, classLevel = null, board = null, classTitle = null, subject = null, chapter = null, platform = 'unknown', whatsappOptIn = true, region = null, city = null, country = null } = req.body;
 
   try {
     // Ensure unique username
@@ -294,6 +294,9 @@ export const registerUser = async (req, res) => {
       password: password || null,
       platform,
       whatsappOptIn,
+      region,
+      city,
+      country,
       // Show onboarding after signup until the learner completes selections
       // Mark onboarding complete only if board, subject, and chapter are present
       onboardingCompleted: !!((board || boardDoc) && (subject || subjectDoc) && (chapter || chapterDoc)),
@@ -448,11 +451,13 @@ export const loginUser = async (req, res) => {
     // Check if user exists and then compare the password
     if (user && (await user.matchPassword(String(password)))) {
       
-      // Update platform if provided
-      if (req.body.platform) {
-        user.platform = req.body.platform;
-        await user.save({ validateBeforeSave: false });
-      }
+      // Update platform and location if provided
+      if (req.body.platform) user.platform = req.body.platform;
+      if (req.body.region) user.region = req.body.region;
+      if (req.body.city) user.city = req.body.city;
+      if (req.body.country) user.country = req.body.country;
+      
+      await user.save({ validateBeforeSave: false });
 
       res.json({
         _id: user._id,
@@ -988,6 +993,32 @@ export const updateActivity = async (req, res) => {
 
     await user.save();
     res.json({ message: 'Activity updated', lastActiveAt: user.lastActiveAt, activeDaysCount: user.activeDaysCount });
+  } catch (error) {
+    res.status(500).json({ message: `Server Error: ${error.message}` });
+  }
+};
+
+// @desc    Update user location
+// @route   POST /api/auth/update-location
+// @access  Public
+export const updateLocation = async (req, res) => {
+  const { userId, region, city, country } = req.body;
+  if (!userId) return res.status(400).json({ message: 'userId is required' });
+
+  try {
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    let updated = false;
+    if (region && user.region !== region) { user.region = region; updated = true; }
+    if (city && user.city !== city) { user.city = city; updated = true; }
+    if (country && user.country !== country) { user.country = country; updated = true; }
+
+    if (updated) {
+      await user.save({ validateBeforeSave: false });
+    }
+
+    res.json({ message: 'Location updated' });
   } catch (error) {
     res.status(500).json({ message: `Server Error: ${error.message}` });
   }

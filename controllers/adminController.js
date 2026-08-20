@@ -65,7 +65,8 @@ export const getUsersAnalytics = async (req, res) => {
         .sort((a, b) => a - b);
 
       let useTime = 0;
-      let lastActive = user.updatedAt || user.createdAt || new Date();
+      // Fallback: If they have a true lastActiveAt field, use it. Otherwise createdAt. Never use updatedAt because cron jobs modify it!
+      let lastActive = user.lastActiveAt || user.createdAt || new Date();
       let lastSessionModuleId = null;
       let dynamicActiveDays = user.activeDaysCount || 1;
 

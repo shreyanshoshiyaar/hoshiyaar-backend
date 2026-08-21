@@ -70,6 +70,7 @@ export const startWhatsappNudgeCron = () => {
         } catch (e) { console.error('Failed to send 0 min nudge to', user.phone); }
       }
 
+      /* --- HALTED TEMPORARILY AS PER REQUEST ---
       // 2. MISSION STARTED (Started but not completed) nudge after 2 hours
       const startedNotCompletedUsers = await User.find({
         ...queryFilter,
@@ -148,6 +149,7 @@ export const startWhatsappNudgeCron = () => {
             }
           } catch (e) { console.error('Failed to send 3 days inactive nudge to', user.phone); }
         }
+      */
     } catch (error) {
       console.error('Error in WhatsApp Nudge Cron:', error);
     }

@@ -15,13 +15,9 @@ export const adminLogin = async (req, res) => {
   const { username, dateOfBirth } = req.body;
 
   try {
-    const user = await User.findOne({ username });
+    const user = await User.findOne({ username, role: 'admin' });
 
     if (user && (await user.matchDateOfBirth(dateOfBirth))) {
-      if (user.role !== 'admin') {
-        return res.status(403).json({ message: 'Access denied: Not an admin' });
-      }
-
       res.json({
         _id: user._id,
         username: user.username,
@@ -30,7 +26,7 @@ export const adminLogin = async (req, res) => {
         token: generateToken(user._id, user.role),
       });
     } else {
-      res.status(401).json({ message: 'Invalid credentials' });
+      res.status(401).json({ message: 'Invalid credentials or access denied' });
     }
   } catch (error) {
     res.status(500).json({ message: `Server Error: ${error.message}` });
@@ -42,8 +38,10 @@ export const adminLogin = async (req, res) => {
 // @access  Private/Admin
 export const getUsersAnalytics = async (req, res) => {
   try {
-    // Only fetch non-admin users for actual student usage tracking
-    const rawUsers = await User.find({ role: { $ne: 'admin' } }).lean();
+    // Only fetch non-admin users for actual student usage tracking, and only project needed fields
+    const rawUsers = await User.find({ role: { $ne: 'admin' } })
+      .select('username name email phone school region city country classLevel isGuest onboardingCompleted platform totalPoints chaptersProgress createdAt lastActiveAt activeDaysCount whatsappNudges pointsLedger')
+      .lean();
 
     const users = rawUsers.map(user => {
       // 1. Process points ledger to calculate clustered active usage duration and accuracy
@@ -139,7 +137,8 @@ export const getUsersAnalytics = async (req, res) => {
         lastActive,
         lastSessionModuleId,
         activeDaysCount: dynamicActiveDays,
-        whatsappNudges: user.whatsappNudges || {}
+        whatsappNudges: user.whatsappNudges || {},
+        _allTimestamps: timestamps // Kept for DAU aggregation
       };
     });
 
@@ -177,6 +176,7 @@ export const getUsersAnalytics = async (req, res) => {
     // WhatsApp Nudges Aggregation
     let whatsappStats = {
       nudge_0_min: 0,
+      nudge_0_min_converted: 0,
       nudge_mission_incomplete: 0,
       nudge_streak_break: 0,
       nudge_3_days_inactive: 0,
@@ -184,7 +184,12 @@ export const getUsersAnalytics = async (req, res) => {
 
     users.forEach(u => {
       if (u.whatsappNudges) {
-        if (u.whatsappNudges.noModule30mSent) whatsappStats.nudge_0_min++;
+        if (u.whatsappNudges.noModule30mSent) {
+          whatsappStats.nudge_0_min++;
+          if (u.chaptersProgress && u.chaptersProgress.length > 0) {
+            whatsappStats.nudge_0_min_converted++;
+          }
+        }
         if (u.whatsappNudges.startedNotCompleted2hSent) whatsappStats.nudge_mission_incomplete++;
         if (u.whatsappNudges.inactive24hSent) whatsappStats.nudge_streak_break++;
         if (u.whatsappNudges.inactive3DaysSent) whatsappStats.nudge_3_days_inactive++;
@@ -265,6 +270,7 @@ export const getUsersAnalytics = async (req, res) => {
     }
 
     users.forEach(u => {
+      // 1. Plot signups
       if (u.createdAt) {
         const { dateStr, hour } = getISTDateHour(u.createdAt);
         if (timelineMap[dateStr]) {
@@ -272,11 +278,43 @@ export const getUsersAnalytics = async (req, res) => {
           timelineMap[dateStr].hourly[hour].signups += 1;
         }
       }
-      if (u.lastActive) {
+
+      // 2. Plot True DAU (Daily Active Users)
+      if (u._allTimestamps && u._allTimestamps.length > 0) {
+        const activeDaysForUser = new Set();
+        const activeHoursForUser = new Set();
+        
+        u._allTimestamps.forEach(t => {
+          const { dateStr, hour } = getISTDateHour(t);
+          activeDaysForUser.add(dateStr);
+          activeHoursForUser.add(`${dateStr}|${hour}`);
+        });
+
+        // Add this user to the total DAU count for those specific days
+        activeDaysForUser.forEach(dateStr => {
+          if (timelineMap[dateStr]) {
+            timelineMap[dateStr].activeUsers += 1;
+          }
+        });
+        
+        // Add this user to the hourly breakdown
+        activeHoursForUser.forEach(entry => {
+          const [dateStr, hourStr] = entry.split('|');
+          const hr = parseInt(hourStr, 10);
+          if (timelineMap[dateStr] && timelineMap[dateStr].hourly[hr]) {
+            timelineMap[dateStr].hourly[hr].activeUsers += 1;
+          }
+        });
+        
+        delete u._allTimestamps;
+      } else if (u.lastActive) {
+        // Fallback for users with no pointsLedger activity (e.g. 0-min users or pure scrollers)
         const { dateStr, hour } = getISTDateHour(u.lastActive);
         if (timelineMap[dateStr]) {
           timelineMap[dateStr].activeUsers += 1;
-          timelineMap[dateStr].hourly[hour].activeUsers += 1;
+          if (timelineMap[dateStr].hourly[hour]) {
+            timelineMap[dateStr].hourly[hour].activeUsers += 1;
+          }
         }
       }
     });

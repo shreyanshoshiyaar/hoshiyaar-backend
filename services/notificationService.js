@@ -143,7 +143,19 @@ export const startDailyMassNotificationCron = () => {
       const validUsers = users.filter(u => u.fcmToken && u.fcmToken.length > 10);
       if (validUsers.length === 0) return;
 
-      const messages = validUsers.map(user => {
+      // Deduplicate by fcmToken so a single device doesn't get multiple notifications (e.g. if the user has multiple test accounts)
+      // We will keep the account with the highest streak for the notification.
+      const uniqueDeviceMap = new Map();
+      validUsers.forEach(user => {
+        const existing = uniqueDeviceMap.get(user.fcmToken);
+        const currentStreak = user.currentStreak || 0;
+        if (!existing || currentStreak > (existing.currentStreak || 0)) {
+          uniqueDeviceMap.set(user.fcmToken, user);
+        }
+      });
+      const uniqueValidUsers = Array.from(uniqueDeviceMap.values());
+
+      const messages = uniqueValidUsers.map(user => {
         const streak = user.currentStreak || 0;
         const streakText = streak > 0 
           ? ` 🔥 Don't lose your ${streak}-day streak!` 

@@ -99,27 +99,63 @@ export const startDailyMassNotificationCron = () => {
     console.log('⏰ Running Daily Mass Notification Cron (7 PM IST)...');
 
     try {
-      const TITLE = "Keep your Hoshiyaar streak alive! 🔥";
-      const BODY = "Consistency is the key to mastering Science. Tap to jump back in and save your streak!";
+      const dayOfWeek = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'long' });
+      
+      const dailyMessages = {
+        Monday: {
+          title: "Blast off into Monday! 🚀",
+          body: "Your next Science adventure is waiting! Let's explore something awesome today."
+        },
+        Tuesday: {
+          title: "Level Up Tuesday! 🎮",
+          body: "It's time to collect some Stars! Complete a quick mission and boost your brain power today."
+        },
+        Wednesday: {
+          title: "Mid-week Magic! ✨",
+          body: "You're halfway through the week! Keep your awesome learning streak going!"
+        },
+        Thursday: {
+          title: "Brain power activate! ⚡",
+          body: "Time for a quick fun challenge before the weekend. Let's go!"
+        },
+        Friday: {
+          title: "Friday Fun-day! 🎉",
+          body: "School's almost out! Finish the week like a true Science champion!"
+        },
+        Saturday: {
+          title: "Weekend Explorer! 🦖",
+          body: "Got 5 minutes of free time? Let's discover something cool today!"
+        },
+        Sunday: {
+          title: "Sunday Funday! 🕹️",
+          body: "Level up before Monday! A quick mission now makes you a genius tomorrow."
+        }
+      };
+
+      const selectedMessage = dailyMessages[dayOfWeek] || dailyMessages['Monday'];
+      const TITLE = selectedMessage.title;
+      const BODY = selectedMessage.body;
       const ACTION_URL = "/learn";
 
-      const users = await User.find({ fcmToken: { $ne: null } }, 'name fcmToken');
+      const users = await User.find({ fcmToken: { $ne: null } }, 'name fcmToken currentStreak');
       if (users.length === 0) return;
 
-      const rawTokens = users.map(u => u.fcmToken).filter(t => t && t.length > 10);
-      const tokens = [...new Set(rawTokens)];
-      if (tokens.length === 0) return;
+      const validUsers = users.filter(u => u.fcmToken && u.fcmToken.length > 10);
+      if (validUsers.length === 0) return;
 
-      const batches = [];
-      for (let i = 0; i < tokens.length; i += 500) {
-        batches.push(tokens.slice(i, i + 500));
-      }
-
-      for (const batch of batches) {
-        const message = {
-          notification: { title: TITLE, body: BODY },
+      const messages = validUsers.map(user => {
+        const streak = user.currentStreak || 0;
+        const streakText = streak > 0 
+          ? ` 🔥 Don't lose your ${streak}-day streak!` 
+          : ` 🔥 Time to start a brand new streak today!`;
+          
+        return {
+          notification: { 
+            title: selectedMessage.title, 
+            body: selectedMessage.body + streakText 
+          },
           data: { url: ACTION_URL },
-          tokens: batch,
+          token: user.fcmToken,
           android: {
             priority: 'high',
             notification: {
@@ -129,14 +165,21 @@ export const startDailyMassNotificationCron = () => {
             }
           }
         };
+      });
 
-        const response = await admin.messaging().sendEachForMulticast(message);
+      const batches = [];
+      for (let i = 0; i < messages.length; i += 500) {
+        batches.push(messages.slice(i, i + 500));
+      }
+
+      for (const batch of batches) {
+        const response = await admin.messaging().sendEach(batch);
         
         if (response.failureCount > 0) {
           const failedTokens = [];
           response.responses.forEach((resp, idx) => {
             if (!resp.success) {
-              failedTokens.push(batch[idx]);
+              failedTokens.push(batch[idx].token);
             }
           });
           

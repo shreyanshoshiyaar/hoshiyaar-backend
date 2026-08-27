@@ -37,7 +37,7 @@ Format:
     while (retries > 0) {
       try {
         response = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
           {
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
@@ -158,7 +158,7 @@ Format exactly like this example array:
     while (retries > 0) {
       try {
         response = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
           {
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { response_mime_type: "application/json", temperature: 0.2, maxOutputTokens: 2000 }
@@ -245,7 +245,7 @@ Answer the student directly. Do NOT use markdown code blocks or JSON. Just reply
     while (retries > 0) {
       try {
         response = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
           {
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {

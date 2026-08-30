@@ -216,18 +216,39 @@ export const getLeaderboard = async (req, res) => {
     let leaderboard = [];
 
     if (metric === 'streak') {
+      // Fetch a larger pool because many high streaks might be broken and thus reset to 0
       const users = await User.find(filter)
         .sort({ currentStreak: -1 })
-        .limit(100)
-        .select('username name school currentStreak')
+        .limit(500)
+        .select('username name school currentStreak lastStreakDate')
         .lean();
 
-      leaderboard = users.map(user => ({
-        username: user.username,
-        name: user.name || user.username,
-        school: user.school,
-        currentStreak: Math.max(0, Number(user.currentStreak || 0))
-      }));
+      const now = new Date().getTime();
+      const FORTY_EIGHT_HOURS = 48 * 60 * 60 * 1000;
+
+      let validUsers = users.map(user => {
+        let actualStreak = Math.max(0, Number(user.currentStreak || 0));
+        
+        // If lastStreakDate is older than ~48 hours, the streak is broken
+        if (actualStreak > 0) {
+          const lastStreak = user.lastStreakDate ? new Date(user.lastStreakDate).getTime() : 0;
+          if (now - lastStreak > FORTY_EIGHT_HOURS) {
+            actualStreak = 0;
+          }
+        }
+
+        return {
+          username: user.username,
+          name: user.name || user.username,
+          school: user.school,
+          currentStreak: actualStreak
+        };
+      });
+
+      // Filter out zero streaks, re-sort based on actual streak, and take top 100
+      validUsers = validUsers.filter(u => u.currentStreak > 0);
+      validUsers.sort((a, b) => b.currentStreak - a.currentStreak);
+      leaderboard = validUsers.slice(0, 100);
     } else if (timeframe === 'total') {
       // High-performance direct query for total points
       const users = await User.find(filter)

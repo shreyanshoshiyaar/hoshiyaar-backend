@@ -220,7 +220,7 @@ export const getLeaderboard = async (req, res) => {
       const users = await User.find(filter)
         .sort({ currentStreak: -1 })
         .limit(500)
-        .select('username name school currentStreak lastStreakDate')
+        .select('username name school currentStreak lastStreakDate lastActiveAt')
         .lean();
 
       const now = new Date().getTime();
@@ -229,9 +229,10 @@ export const getLeaderboard = async (req, res) => {
       let validUsers = users.map(user => {
         let actualStreak = Math.max(0, Number(user.currentStreak || 0));
         
-        // If lastStreakDate is older than ~48 hours, the streak is broken
+        // If lastStreakDate (or lastActiveAt as fallback) is older than ~48 hours, the streak is broken
         if (actualStreak > 0) {
-          const lastStreak = user.lastStreakDate ? new Date(user.lastStreakDate).getTime() : 0;
+          const referenceDate = user.lastStreakDate || user.lastActiveAt;
+          const lastStreak = referenceDate ? new Date(referenceDate).getTime() : 0;
           if (now - lastStreak > FORTY_EIGHT_HOURS) {
             actualStreak = 0;
           }

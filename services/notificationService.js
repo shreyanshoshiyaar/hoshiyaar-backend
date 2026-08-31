@@ -1,5 +1,6 @@
 import admin from 'firebase-admin';
 import User from '../models/User.js';
+import SystemSettings from '../models/SystemSettings.js';
 import cron from 'node-cron';
 import { readFileSync } from 'fs';
 import path from 'path';
@@ -99,6 +100,21 @@ export const startDailyMassNotificationCron = () => {
     console.log('⏰ Running Daily Mass Notification Cron (7 PM IST)...');
 
     try {
+      // Create a distributed lock for today's date to prevent duplicate pushes from multiple server instances (or local dev running simultaneously)
+      const todayString = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }).split(',')[0].replace(/\//g, '-');
+      const lockKey = `cron_mass_notify_${todayString}`;
+      
+      const lock = await SystemSettings.findOneAndUpdate(
+        { key: lockKey },
+        { $setOnInsert: { key: lockKey, value: 'locked', description: `Lock for daily mass notification on ${todayString}` } },
+        { upsert: true, returnDocument: 'before' } // 'before' returns null if it was inserted (i.e. we got the lock)
+      );
+      
+      if (lock) {
+        console.log(`🔒 Daily Mass Notification already ran today by another instance (Lock found). Skipping.`);
+        return;
+      }
+
       const dayOfWeek = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'long' });
       
       const dailyMessages = {

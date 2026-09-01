@@ -93,11 +93,11 @@ export const startInactivityCron = () => {
   console.log('🚀 Inactivity Cron Job Scheduled (Daily 10:00 AM)');
 };
 
-// Cron Job: Run every day at 7:00 PM IST
+// Cron Job: Run every day at 5:00 PM IST
 export const startDailyMassNotificationCron = () => {
-  // 7:00 PM IST
-  cron.schedule('0 19 * * *', async () => {
-    console.log('⏰ Running Daily Mass Notification Cron (7 PM IST)...');
+  // 5:00 PM IST
+  cron.schedule('0 17 * * *', async () => {
+    console.log('⏰ Running Daily Mass Notification Cron (5 PM IST)...');
 
     try {
       // Create a distributed lock for today's date to prevent duplicate pushes from multiple server instances (or local dev running simultaneously)
@@ -225,5 +225,5 @@ export const startDailyMassNotificationCron = () => {
   }, {
     timezone: 'Asia/Kolkata'
   });
-  console.log('🚀 Daily Mass Notification Cron Scheduled (Daily 7:00 PM IST)');
+  console.log('🚀 Daily Mass Notification Cron Scheduled (Daily 5:00 PM IST)');
 };

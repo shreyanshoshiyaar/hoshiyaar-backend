@@ -331,9 +331,9 @@ export const getLeaderboard = async (req, res) => {
 // Sync streak from frontend to backend
 export const syncStreak = async (req, res) => {
   try {
-    const { userId, streak } = req.body;
-    if (!userId || typeof streak !== 'number') {
-      return res.status(400).json({ message: 'Missing userId or streak' });
+    const { userId, localDate } = req.body;
+    if (!userId) {
+      return res.status(400).json({ message: 'Missing userId' });
     }
 
     const user = await User.findById(userId);
@@ -341,15 +341,44 @@ export const syncStreak = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Only update if the local streak is higher, or if we want to trust the frontend entirely.
-    // Trust the frontend for now, but ensure we don't go backwards unintentionally.
-    if (streak > (user.currentStreak || 0) || streak === 1) { // allow reset to 1
-      user.currentStreak = streak;
-      user.lastStreakDate = new Date();
+    // Default to server time if localDate isn't provided (fallback)
+    const clientDate = localDate ? new Date(localDate) : new Date();
+    clientDate.setHours(0, 0, 0, 0);
+
+    let newStreak = user.currentStreak || 0;
+    
+    // Convert lastStreakDate to local timezone start of day for accurate comparison
+    const lastStreak = user.lastStreakDate ? new Date(user.lastStreakDate) : null;
+    let lastStreakClientMidnight = null;
+    
+    if (lastStreak) {
+      // Offset the UTC date by the same amount so we can compare "days" accurately
+      lastStreakClientMidnight = new Date(lastStreak);
+      lastStreakClientMidnight.setHours(0, 0, 0, 0);
+    }
+
+    if (!lastStreakClientMidnight) {
+      newStreak = 1;
+    } else {
+      const yesterday = new Date(clientDate);
+      yesterday.setDate(clientDate.getDate() - 1);
+
+      if (lastStreakClientMidnight.getTime() === yesterday.getTime()) {
+        newStreak += 1;
+      } else if (lastStreakClientMidnight.getTime() !== clientDate.getTime()) {
+        newStreak = 1;
+      }
+    }
+
+    // Only save if the streak hasn't been updated for THIS client day yet
+    if (!lastStreakClientMidnight || lastStreakClientMidnight.getTime() !== clientDate.getTime()) {
+      user.currentStreak = newStreak;
+      // Save the actual UTC timestamp so we know EXACTLY when they played
+      user.lastStreakDate = new Date(); 
       await user.save();
     }
 
-    return res.json({ success: true, currentStreak: user.currentStreak });
+    return res.json({ success: true, currentStreak: user.currentStreak, lastStreakDate: user.lastStreakDate });
   } catch (err) {
     console.error('[points] syncStreak error', err);
     return res.status(500).json({ message: 'Internal server error' });

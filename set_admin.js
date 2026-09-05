@@ -11,10 +11,16 @@ async function run() {
     await mongoose.connect(MONGO_URI);
     console.log("✅ Connected to MongoDB.");
 
-    const phone = '9987611441';
+    const phone = '9867735936';
     
     // Find the user by phone number
-    const user = await User.findOne({ phone: phone });
+    const user = await User.findOne({ 
+      $or: [
+        { phone: '9867735936' },
+        { phone: '919867735936' },
+        { phone: '+919867735936' }
+      ]
+    });
     
     if (!user) {
         console.log(`❌ Could not find user with phone number ${phone}`);

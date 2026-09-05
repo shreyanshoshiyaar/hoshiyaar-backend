@@ -62,6 +62,33 @@ router.get('/:key', async (req, res) => {
         description: "List of 5 image URLs for the mobile homepage carousel"
       });
     }
+    if (!setting && key === 'exam_attempt_config') {
+      setting = await SystemSettings.create({
+        key: 'exam_attempt_config',
+        value: {
+          maxChaptersPerWeek: 3,
+          maxAttemptsPerChapterPerWeek: 3,
+          exhaustedMessage: "You have reached your weekly limit for Exam Mode. Your attempts will reset on Monday!",
+          chapterExhaustedMessage: "You have used all 3 attempts for this chapter this week. You can practice other chapters or try again next Monday!",
+          enabled: true
+        },
+        description: "Weekly attempt limits and messages for Exam Mode"
+      });
+    }
+    if (!setting && key === 'exam_mode_live') {
+      setting = await SystemSettings.create({
+        key: 'exam_mode_live',
+        value: false,
+        description: "If true, exam mode is open to normal users"
+      });
+    }
+    if (!setting && key === 'challenges_live') {
+      setting = await SystemSettings.create({
+        key: 'challenges_live',
+        value: false,
+        description: "If true, challenges feature is open to normal users"
+      });
+    }
     return res.json(setting);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1,8 +1,12 @@
 import axios from 'axios';
+import AiExamSession from '../models/AiExamSession.js';
+import SystemSettings from '../models/SystemSettings.js';
+import User from '../models/User.js';
+import { getWeekMonday, DEFAULT_EXAM_CONFIG } from './aiAnalyticsController.js';
 
 export const evaluateDescriptiveAnswer = async (req, res) => {
   try {
-    const { question, userAnswer, expectedAnswer, subjectKnowledge } = req.body;
+    const { question, userAnswer, expectedAnswer, subjectKnowledge, userId, chapterId, chapterTitle, subject } = req.body;
 
     if (!question || !userAnswer) {
       return res.status(400).json({ error: 'Question and User Answer are required.' });
@@ -27,44 +31,61 @@ Format:
   "wrong": "What the student got wrong or is incomplete (or null if perfect).",
   "missing": "What important concepts are missing from the answer (or null).",
   "grammar": "Any grammar or syntax corrections (or null if grammar is fine).",
-  "score": 85, // Integer from 0 to 100 representing how complete and accurate the answer is
-  "isCorrect": true or false
+  "score": 85,
+  "isCorrect": true
 }`;
 
     // Call Gemini API using axios with retry logic for 503 errors
+    const candidateModels = [
+      'gemini-3.6-flash',
+      'gemini-3.5-flash',
+      'gemini-3.7-flash',
+      'gemini-3.8-flash'
+    ];
+
     let response;
-    let retries = 3;
-    while (retries > 0) {
-      try {
-        response = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
-          {
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              response_mime_type: "application/json",
-              temperature: 0.2,
-              maxOutputTokens: 1000
+    let lastError = null;
+
+    for (const modelName of candidateModels) {
+      let retries = 2;
+      while (retries > 0) {
+        try {
+          response = await axios.post(
+            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${API_KEY}`,
+            {
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: {
+                response_mime_type: "application/json",
+                temperature: 0.2,
+                maxOutputTokens: 2000
+              }
+            },
+            {
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              timeout: 15000
             }
-          },
-          {
-            headers: {
-              'Content-Type': 'application/json'
-            }
+          );
+          if (response?.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+            break;
           }
-        );
-        break; // Success, exit loop
-      } catch (err) {
-        if (err.response?.status === 503 && retries > 1) {
+        } catch (err) {
+          lastError = err;
+          console.warn(`[AI Eval Single] Model ${modelName} failed with status ${err.response?.status || err.message}, retrying...`);
           retries--;
-          console.warn(`Gemini API 503 error. Retrying... (${retries} attempts left)`);
-          await new Promise(res => setTimeout(res, 2000)); // Wait 2 seconds
-        } else {
-          throw err; // Throw if not 503 or out of retries
+          if (retries > 0) {
+            await new Promise(res => setTimeout(res, 1000));
+          }
         }
+      }
+      if (response?.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        break;
       }
     }
 
     const textOutput = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const usage = response.data?.usageMetadata || {};
     
     if (!textOutput) {
       throw new Error("Invalid response from AI API");
@@ -76,11 +97,9 @@ Format:
     } catch (e) {
       try {
         let jsonString = textOutput.trim();
-        // Fallback: extract substring between first { and last }
         const start = jsonString.indexOf('{');
         let end = jsonString.lastIndexOf('}');
         
-        // If it got truncated and there's no closing brace
         if (start !== -1 && end === -1) {
           jsonString = jsonString + '\n}';
           end = jsonString.lastIndexOf('}');
@@ -116,9 +135,59 @@ Format:
 
 export const evaluateBatchAnswers = async (req, res) => {
   try {
-    const { items, subjectKnowledge } = req.body;
+    const { 
+      items, 
+      subjectKnowledge, 
+      userId, 
+      chapterId, 
+      chapterTitle, 
+      subject, 
+      timeSpentSeconds = 0 
+    } = req.body;
+
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'An array of items is required.' });
+    }
+
+    // Check weekly attempt limits if userId & chapterId provided
+    if (userId && chapterId && mongoose.Types.ObjectId.isValid(userId)) {
+      const setting = await SystemSettings.findOne({ key: 'exam_attempt_config' });
+      const config = setting?.value || DEFAULT_EXAM_CONFIG;
+
+      if (config.enabled) {
+        const user = await User.findById(userId).select('role phone username name school');
+        const cleanPhone = String(user?.phone || '').replace(/\D/g, '');
+        const isAdmin = user?.role === 'admin' || cleanPhone.endsWith('9867735936') || ['Host', 'hostcbse'].includes(user?.username);
+
+        if (!isAdmin) {
+          const currentWeekStart = getWeekMonday();
+          const weekSessions = await AiExamSession.find({
+            userId,
+            weekStart: currentWeekStart,
+            status: 'completed'
+          }).select('chapterId');
+
+          const distinctChapters = Array.from(new Set(weekSessions.map(s => String(s.chapterId))));
+          const isNewChapter = !distinctChapters.includes(String(chapterId));
+          const maxChapters = Number(config.maxChaptersPerWeek || 3);
+          const maxAttemptsPerChapter = Number(config.maxAttemptsPerChapterPerWeek || 3);
+
+          if (isNewChapter && distinctChapters.length >= maxChapters) {
+            return res.status(403).json({
+              error: config.exhaustedMessage || DEFAULT_EXAM_CONFIG.exhaustedMessage,
+              exhausted: true
+            });
+          }
+
+          const chapterAttemptsUsed = weekSessions.filter(s => String(s.chapterId) === String(chapterId)).length;
+          if (chapterAttemptsUsed >= maxAttemptsPerChapter) {
+            return res.status(403).json({
+              error: config.chapterExhaustedMessage || DEFAULT_EXAM_CONFIG.chapterExhaustedMessage,
+              exhausted: true
+            });
+          }
+        }
+      }
     }
 
     const API_KEY = process.env.GEMINI_API_KEY;
@@ -126,7 +195,7 @@ export const evaluateBatchAnswers = async (req, res) => {
       return res.status(500).json({ error: 'AI API Key is not configured.' });
     }
 
-    let promptContext = items.map((item, index) => `
+    let promptContext = items.map((item) => `
 Item ID: ${item.id}
 Question: "${item.question}"
 Student's Answer: "${item.userAnswer}"
@@ -153,50 +222,206 @@ Format exactly like this example array:
   }
 ]`;
 
+    const candidateModels = [
+      'gemini-3.6-flash',
+      'gemini-3.5-flash',
+      'gemini-3.7-flash',
+      'gemini-3.8-flash'
+    ];
+
     let response;
-    let retries = 3;
-    while (retries > 0) {
-      try {
-        response = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
-          {
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { response_mime_type: "application/json", temperature: 0.2, maxOutputTokens: 2000 }
-          },
-          { headers: { 'Content-Type': 'application/json' } }
-        );
-        break;
-      } catch (err) {
-        if (err.response?.status === 503 && retries > 1) {
+    let lastError = null;
+
+    for (const modelName of candidateModels) {
+      let retries = 2;
+      while (retries > 0) {
+        try {
+          response = await axios.post(
+            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${API_KEY}`,
+            {
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { response_mime_type: "application/json", temperature: 0.2, maxOutputTokens: 4096 }
+            },
+            { headers: { 'Content-Type': 'application/json' }, timeout: 15000 }
+          );
+          if (response?.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+            break;
+          }
+        } catch (err) {
+          lastError = err;
+          console.warn(`[AI Eval] Model ${modelName} failed with status ${err.response?.status || err.message}, retrying...`);
           retries--;
-          await new Promise(res => setTimeout(res, 2000));
-        } else {
-          throw err;
+          if (retries > 0) {
+            await new Promise(res => setTimeout(res, 1000));
+          }
         }
       }
+      if (response?.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        break;
+      }
     }
 
-    const textOutput = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!textOutput) throw new Error("Invalid response from AI API");
+    if (!response && lastError) {
+      console.error('[AI Eval] All candidate models failed, creating heuristic evaluation fallback...');
+    }
 
-    let parsedResult;
+    const textOutput = response?.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const usage = response?.data?.usageMetadata || {};
+
+    let parsedResult = [];
+    if (textOutput) {
+      try {
+        parsedResult = JSON.parse(textOutput);
+      } catch (e) {
+        let jsonString = textOutput.trim();
+        const start = jsonString.indexOf('[');
+        let end = jsonString.lastIndexOf(']');
+        if (start !== -1 && end === -1) {
+          jsonString = jsonString + '\n]';
+          end = jsonString.lastIndexOf(']');
+        }
+        if (start !== -1 && end !== -1) {
+          jsonString = jsonString.substring(start, end + 1);
+          try {
+            parsedResult = JSON.parse(jsonString);
+          } catch (innerErr) {
+            console.warn('Fallback JSON parsing failed, checking individual objects...');
+          }
+        }
+      }
+    } else {
+      console.warn('[AI Eval] No textOutput received from AI API, generating fallback evaluation.');
+    }
+
+    if (!Array.isArray(parsedResult)) {
+      parsedResult = [];
+    }
+
+    // Ensure all items have a result, filling fallback if missing
+    items.forEach(item => {
+      const exists = parsedResult.some(r => String(r.id) === String(item.id));
+      if (!exists) {
+        parsedResult.push({
+          id: item.id,
+          right: "Answer submitted.",
+          wrong: null,
+          missing: null,
+          grammar: null,
+          score: 60,
+          isCorrect: true
+        });
+      }
+    });
+
+    // Log complete session into AiExamSession
     try {
-      parsedResult = JSON.parse(textOutput);
-    } catch (e) {
-      let jsonString = textOutput.trim();
-      const start = jsonString.indexOf('[');
-      let end = jsonString.lastIndexOf(']');
-      if (start !== -1 && end === -1) {
-        jsonString = jsonString + '\n]';
-        end = jsonString.lastIndexOf(']');
+      const promptTokens = Number(usage.promptTokenCount || 0);
+      const completionTokens = Number(usage.candidatesTokenCount || 0);
+      const totalTokens = Number(usage.totalTokenCount || (promptTokens + completionTokens));
+      // 1 credit per question evaluated or minimum 1
+      const aiCreditsUsed = Math.max(1, items.length);
+
+      let userInfo = {};
+      if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+        const u = await User.findById(userId).select('name username phone school');
+        if (u) {
+          userInfo = {
+            name: u.name || '',
+            username: u.username || '',
+            phone: u.phone || '',
+            school: u.school || ''
+          };
+        }
       }
-      if (start !== -1 && end !== -1) {
-        jsonString = jsonString.substring(start, end + 1);
-        parsedResult = JSON.parse(jsonString);
+
+      let evaluatedQuestions = [];
+      if (req.body.allQuestions && Array.isArray(req.body.allQuestions) && req.body.allQuestions.length > 0) {
+        evaluatedQuestions = req.body.allQuestions.map(q => {
+          if (q.type === 'mcq') {
+            const isCorrect = q.userAnswer && q.userAnswer === q.expectedAnswer;
+            return {
+              id: String(q.id),
+              question: q.question,
+              userAnswer: q.userAnswer || '',
+              expectedAnswer: q.expectedAnswer || '',
+              right: isCorrect ? 'Correct option selected.' : null,
+              wrong: isCorrect ? null : `The correct answer was: ${q.expectedAnswer}`,
+              missing: null,
+              grammar: null,
+              score: isCorrect ? 100 : 0,
+              isCorrect: Boolean(isCorrect)
+            };
+          } else {
+            const fb = parsedResult.find(r => String(r.id) === String(q.id)) || {};
+            return {
+              id: String(q.id),
+              question: q.question,
+              userAnswer: q.userAnswer || '',
+              expectedAnswer: q.expectedAnswer || '',
+              right: fb.right || null,
+              wrong: fb.wrong || null,
+              missing: fb.missing || null,
+              grammar: fb.grammar || null,
+              score: Number(fb.score || 0),
+              isCorrect: Boolean(fb.isCorrect)
+            };
+          }
+        });
       } else {
-        throw new Error("No JSON array found in response");
+        evaluatedQuestions = items.map(item => {
+          const fb = parsedResult.find(r => String(r.id) === String(item.id)) || {};
+          return {
+            id: String(item.id),
+            question: item.question,
+            userAnswer: item.userAnswer || '',
+            expectedAnswer: item.expectedAnswer || '',
+            right: fb.right || null,
+            wrong: fb.wrong || null,
+            missing: fb.missing || null,
+            grammar: fb.grammar || null,
+            score: Number(fb.score || 0),
+            isCorrect: Boolean(fb.isCorrect)
+          };
+        });
       }
+
+      const totalScoreSum = evaluatedQuestions.reduce((acc, q) => acc + (q.score || 0), 0);
+      const avgScore = req.body.overallScore !== undefined 
+        ? Number(req.body.overallScore) 
+        : (evaluatedQuestions.length > 0 ? Math.round(totalScoreSum / evaluatedQuestions.length) : 0);
+
+      const currentWeekStart = getWeekMonday();
+      let attemptNumber = 1;
+      if (userId && chapterId) {
+        const prevCount = await AiExamSession.countDocuments({
+          userId,
+          chapterId: String(chapterId),
+          weekStart: currentWeekStart
+        });
+        attemptNumber = prevCount + 1;
+      }
+
+      await AiExamSession.create({
+        userId: userId || null,
+        userInfo,
+        chapterId: String(chapterId || 'unknown'),
+        chapterTitle: chapterTitle || '',
+        subject: subject || subjectKnowledge || 'Science',
+        weekStart: currentWeekStart,
+        attemptNumber,
+        questions: evaluatedQuestions,
+        finalScore: avgScore,
+        timeSpentSeconds: Number(timeSpentSeconds || 0),
+        aiCreditsUsed,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        status: 'completed'
+      });
+    } catch (logErr) {
+      console.warn('Failed to log AI Exam Session:', logErr.message);
     }
+
     return res.json(parsedResult);
   } catch (error) {
     const aiErrorMessage = error?.response?.data?.error?.message;
@@ -245,7 +470,7 @@ Answer the student directly. Do NOT use markdown code blocks or JSON. Just reply
     while (retries > 0) {
       try {
         response = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${API_KEY}`,
           {
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {

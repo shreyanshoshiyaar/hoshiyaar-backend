@@ -18,7 +18,7 @@ import sitemapRoutes from './routes/sitemap.js';
 import Subject from './models/Subject.js';
 import ClassLevel from './models/ClassLevel.js';
 import User from './models/User.js';
-import { initFirebase, startInactivityCron, startDailyMassNotificationCron } from './services/notificationService.js';
+import { initFirebase, startInactivityCron, startDailyMassNotificationCron, startStreakRiskNotificationCron, startLeaderboardRankCheckCron } from './services/notificationService.js';
 import { startWhatsappNudgeCron } from './services/whatsappNudgeCron.js';
 
 // Load environment variables from .env file
@@ -47,6 +47,12 @@ startWhatsappNudgeCron();
 
 // Start the Daily 5:00 PM Mass Notification Cron Job
 startDailyMassNotificationCron();
+
+// Start the Daily 8:00 PM Streak Risk Notification Cron Job
+startStreakRiskNotificationCron();
+
+// Start the Every 30 mins Leaderboard Rank Check Cron Job
+startLeaderboardRankCheckCron();
 
 const app = express();
 

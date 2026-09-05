@@ -227,3 +227,199 @@ export const startDailyMassNotificationCron = () => {
   });
   console.log('🚀 Daily Mass Notification Cron Scheduled (Daily 5:00 PM IST)');
 };
+
+// Cron Job: Run every day at 8:00 PM IST to warn users about expiring streaks
+export const startStreakRiskNotificationCron = () => {
+  cron.schedule('0 20 * * *', async () => {
+    console.log('⏰ Running Streak Risk Notification Cron (8 PM IST)...');
+
+    try {
+      const todayString = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }).split(',')[0].replace(/\//g, '-');
+      const lockKey = `cron_streak_risk_${todayString}`;
+      
+      const lock = await SystemSettings.findOneAndUpdate(
+        { key: lockKey },
+        { $setOnInsert: { key: lockKey, value: 'locked', description: `Lock for streak risk notification on ${todayString}` } },
+        { upsert: true, returnDocument: 'before' }
+      );
+      
+      if (lock) {
+        console.log(`🔒 Streak Risk Notification already ran today by another instance. Skipping.`);
+        return;
+      }
+
+      // We want users whose lastStreakDate is older than today, and who have a streak > 0
+      // To keep it simple, let's just find users with a streak > 0, and check if they've been active today.
+      // Wait, lastStreakDate represents the local date of their last completed module.
+      // Or we can check if lastActiveAt < start of today IST
+      const now = new Date();
+      const istTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+      const startOfTodayIST = new Date(istTime.getFullYear(), istTime.getMonth(), istTime.getDate(), 0, 0, 0);
+
+      const users = await User.find({ 
+        fcmToken: { $ne: null },
+        currentStreak: { $gt: 0 },
+        // If lastActiveAt is before today, they haven't logged in today
+        lastActiveAt: { $lt: startOfTodayIST }
+      }, 'name fcmToken currentStreak lastActiveAt');
+
+      const validUsers = users.filter(u => u.fcmToken && u.fcmToken.length > 10);
+      
+      const uniqueDeviceMap = new Map();
+      validUsers.forEach(user => {
+        const existing = uniqueDeviceMap.get(user.fcmToken);
+        if (!existing || user.currentStreak > existing.currentStreak) {
+          uniqueDeviceMap.set(user.fcmToken, user);
+        }
+      });
+      const uniqueValidUsers = Array.from(uniqueDeviceMap.values());
+
+      if (uniqueValidUsers.length === 0) {
+        console.log('No users at risk of losing their streak today.');
+        return;
+      }
+
+      console.log(`Sending streak risk notifications to ${uniqueValidUsers.length} users.`);
+
+      const messages = uniqueValidUsers.map(user => {
+        return {
+          notification: { 
+            title: "⚠️ Streak at Risk!", 
+            body: `Agent ${user.name || ''}, your ${user.currentStreak}-day streak is about to break! Open the app now and complete a module to save it.` 
+          },
+          data: { url: "/learn" },
+          token: user.fcmToken,
+          android: {
+            priority: 'high',
+            notification: {
+              channelId: 'study_reminders',
+              defaultSound: true,
+              defaultVibrateTimings: true,
+            }
+          }
+        };
+      });
+
+      const batches = [];
+      for (let i = 0; i < messages.length; i += 500) {
+        batches.push(messages.slice(i, i + 500));
+      }
+
+      for (const batch of batches) {
+        const response = await admin.messaging().sendEach(batch);
+        if (response.failureCount > 0) {
+          const failedTokens = [];
+          response.responses.forEach((resp, idx) => {
+            if (!resp.success) {
+              failedTokens.push(batch[idx].token);
+            }
+          });
+          await User.updateMany(
+            { fcmToken: { $in: failedTokens } },
+            { $set: { fcmToken: null } }
+          );
+        }
+      }
+      
+      console.log('✅ Streak Risk Notification completed.');
+    } catch (error) {
+      console.error('Error in Streak Risk Notification Cron:', error);
+    }
+  }, {
+    timezone: 'Asia/Kolkata'
+  });
+  console.log('🚀 Streak Risk Notification Cron Scheduled (Daily 8:00 PM IST)');
+};
+
+// Cron Job: Run every 30 minutes to check if users dropped in rank
+export const startLeaderboardRankCheckCron = () => {
+  cron.schedule('*/30 * * * *', async () => {
+    console.log('⏰ Running Leaderboard Rank Check Cron...');
+
+    try {
+      const now = new Date();
+      const lockKey = `cron_leaderboard_rank_${now.getFullYear()}_${now.getMonth()}_${now.getDate()}_${now.getHours()}_${Math.floor(now.getMinutes()/30)}`;
+      
+      const lock = await SystemSettings.findOneAndUpdate(
+        { key: lockKey },
+        { $setOnInsert: { key: lockKey, value: 'locked', description: `Lock for leaderboard check` } },
+        { upsert: true, returnDocument: 'before' }
+      );
+      
+      if (lock) return;
+
+      const schools = await User.distinct('school');
+      
+      const messages = [];
+      const failedTokens = [];
+
+      for (const school of schools) {
+        if (!school) continue;
+        
+        // Sort users in school by totalPoints descending, just like the actual leaderboard
+        const usersInSchool = await User.find({ school })
+                                        .sort({ totalPoints: -1 })
+                                        .select('name fcmToken totalPoints lastKnownRank');
+                                        
+        for (let i = 0; i < usersInSchool.length; i++) {
+          const user = usersInSchool[i];
+          const currentRank = i + 1;
+          
+          if (user.lastKnownRank && currentRank > user.lastKnownRank && user.fcmToken && user.fcmToken.length > 10) {
+            // Rank dropped! Meaning someone passed them.
+            messages.push({
+              notification: { 
+                title: "🚨 You lost your rank!", 
+                body: `Oh no! Someone just passed you. You dropped to Rank #${currentRank}. Complete a module to reclaim your spot!` 
+              },
+              data: { url: "/learn" },
+              token: user.fcmToken,
+              android: {
+                priority: 'high',
+                notification: {
+                  channelId: 'study_reminders',
+                  defaultSound: true,
+                }
+              }
+            });
+          }
+          
+          if (user.lastKnownRank !== currentRank) {
+            await User.updateOne({ _id: user._id }, { $set: { lastKnownRank: currentRank } });
+          }
+        }
+      }
+
+      if (messages.length === 0) return;
+
+      console.log(`Sending rank drop notifications to ${messages.length} users.`);
+
+      const batches = [];
+      for (let i = 0; i < messages.length; i += 500) {
+        batches.push(messages.slice(i, i + 500));
+      }
+
+      for (const batch of batches) {
+        const response = await admin.messaging().sendEach(batch);
+        if (response.failureCount > 0) {
+          response.responses.forEach((resp, idx) => {
+            if (!resp.success) {
+              failedTokens.push(batch[idx].token);
+            }
+          });
+        }
+      }
+      
+      if (failedTokens.length > 0) {
+        await User.updateMany(
+          { fcmToken: { $in: failedTokens } },
+          { $set: { fcmToken: null } }
+        );
+      }
+      
+    } catch (error) {
+      console.error('Error in Leaderboard Rank Check Cron:', error);
+    }
+  });
+  console.log('🚀 Leaderboard Rank Check Cron Scheduled (Every 30 mins)');
+};

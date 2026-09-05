@@ -6,3 +6,5 @@ Environment variables
 
 Secrets
 config/firebase-service-account.json
+
+check_user_debug.js

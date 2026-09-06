@@ -267,8 +267,13 @@ export const registerUser = async (req, res) => {
   const { username, name, email = null, phone = null, password = null, age, dateOfBirth, classLevel = null, board = null, classTitle = null, subject = null, chapter = null, platform = 'unknown', whatsappOptIn = true, region = null, city = null, country = null } = req.body;
 
   try {
-    if (!email) {
-      return res.status(400).json({ message: 'Email address is required' });
+    const normalizedEmail = (typeof email === 'string' && email.trim().length > 0) ? email.trim().toLowerCase() : null;
+
+    if (normalizedEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(normalizedEmail)) {
+        return res.status(400).json({ message: 'Please enter a valid email address' });
+      }
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -328,7 +333,7 @@ export const registerUser = async (req, res) => {
     const user = await User.create({
       username,
       name,
-      email,
+      email: normalizedEmail,
       age,
       dateOfBirth,
       classLevel,

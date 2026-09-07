@@ -84,7 +84,7 @@ export const sendOtp = async (req, res) => {
 
   // --- TEST USER BYPASS ---
   // Allow test numbers to bypass OTP sending so you can test the signup flow anytime
-  if (['9999999999', '9867735936'].includes(phone)) {
+  if (['9999999999', '9867735936', '7021970672'].includes(phone)) {
     return res.status(200).json({ message: 'OTP sent successfully via WhatsApp' });
   }
   // ------------------------
@@ -225,7 +225,7 @@ export const verifyOtp = async (req, res) => {
 
   // --- TEST USER BYPASS ---
   // Allow test numbers to bypass OTP verification
-  if (['9999999999', '9867735936'].includes(phone) && otp === '123456') {
+  if (['9999999999', '9867735936', '7021970672'].includes(phone) && otp === '123456') {
     return res.status(200).json({ message: 'OTP verified successfully' });
   }
   // ------------------------
@@ -511,7 +511,8 @@ export const loginUser = async (req, res) => {
       if (req.body.city) user.city = req.body.city;
       if (req.body.country) user.country = req.body.country;
       
-      const isSuperAdmin = String(user.phone || '').replace(/\D/g, '').endsWith('9867735936') || ['Host', 'hostcbse'].includes(user.username);
+      const cleanPhone = String(user.phone || '').replace(/\D/g, '');
+      const isSuperAdmin = cleanPhone.endsWith('9867735936') || cleanPhone.endsWith('7021970672') || ['Host', 'hostcbse'].includes(user.username);
       if (isSuperAdmin && user.role !== 'admin') {
         user.role = 'admin';
         await user.save({ validateBeforeSave: false });
@@ -557,7 +558,8 @@ export const getUser = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    const isSuperAdmin = String(user.phone || '').replace(/\D/g, '').endsWith('9867735936') || ['Host', 'hostcbse'].includes(user.username);
+    const cleanPhone = String(user.phone || '').replace(/\D/g, '');
+    const isSuperAdmin = cleanPhone.endsWith('9867735936') || cleanPhone.endsWith('7021970672') || ['Host', 'hostcbse'].includes(user.username);
     res.json({
       _id: user._id,
       username: user.username,

@@ -157,7 +157,7 @@ export const evaluateBatchAnswers = async (req, res) => {
       if (config.enabled) {
         const user = await User.findById(userId).select('role phone username name school');
         const cleanPhone = String(user?.phone || '').replace(/\D/g, '');
-        const isAdmin = user?.role === 'admin' || cleanPhone.endsWith('9867735936') || ['Host', 'hostcbse'].includes(user?.username);
+        const isAdmin = user?.role === 'admin' || cleanPhone.endsWith('9867735936') || cleanPhone.endsWith('7021970672') || ['Host', 'hostcbse'].includes(user?.username);
 
         if (!isAdmin) {
           const currentWeekStart = getWeekMonday();

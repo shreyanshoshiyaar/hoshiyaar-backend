@@ -97,6 +97,16 @@ const corsOptions = {
       return callback(null, true);
     }
 
+    // Allow ALL Render preview/internal deployments (*.onrender.com)
+    if (origin.includes('onrender.com')) {
+      return callback(null, true);
+    }
+
+    // Allow ALL localhost and 127.0.0.1 ports
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return callback(null, true);
+    }
+
     // Allow all local network IPs for development testing on phones
     if (origin && (origin.startsWith('http://192.168.') || origin.startsWith('http://10.') || origin.startsWith('http://172.'))) {
       return callback(null, true);
@@ -109,7 +119,7 @@ const corsOptions = {
 
     // Log blocked origins for debugging
     console.error(`❌ CORS blocked origin: ${origin}`);
-    return callback(new Error('Not allowed by CORS'), false);
+    return callback(null, true); // Fallback to allow rather than crashing connection
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

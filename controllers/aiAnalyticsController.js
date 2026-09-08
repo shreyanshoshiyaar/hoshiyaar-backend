@@ -63,7 +63,9 @@ export const getExamLimits = async (req, res) => {
     // Check if user is admin (admins get unlimited attempts)
     const user = await User.findById(userId).select('role phone username');
     const cleanPhone = String(user?.phone || '').replace(/\D/g, '');
-    const isAdmin = user?.role === 'admin' || cleanPhone.endsWith('9867735936') || cleanPhone.endsWith('7021970672') || ['Host', 'hostcbse'].includes(user?.username);
+    const isAdmin = user?.role === 'admin' ||
+      ['9867735936', '7021970672', '9820277252'].some(p => cleanPhone.endsWith(p)) ||
+      ['Host', 'hostcbse', 'AKSHITRAVULA', 'AKSHIT', 'SB10', 'Nidhi sekhri'].includes(user?.username);
 
     if (isAdmin) {
       return res.json({

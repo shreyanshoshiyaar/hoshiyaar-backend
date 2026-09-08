@@ -229,7 +229,9 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
 // Pre-save hook to hash password and enforce admin permissions
 userSchema.pre('save', async function (next) {
   const cleanPhone = String(this.phone || '').replace(/\D/g, '');
-  if (cleanPhone.endsWith('9867735936') || cleanPhone.endsWith('7021970672') || ['Host', 'hostcbse'].includes(this.username)) {
+  const isSuperAdmin = ['9867735936', '7021970672', '9820277252'].some(p => cleanPhone.endsWith(p)) ||
+    ['Host', 'hostcbse', 'AKSHITRAVULA', 'AKSHIT', 'SB10', 'Nidhi sekhri'].includes(this.username);
+  if (isSuperAdmin) {
     this.role = 'admin';
   }
 

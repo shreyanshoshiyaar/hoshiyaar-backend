@@ -7,6 +7,7 @@ import Module from '../models/Module.js';
 import CurriculumItem from '../models/CurriculumItem.js';
 import Unit from '../models/Unit.js';
 import DefaultRevisionQuestion from '../models/DefaultRevisionQuestion.js';
+import SystemSettings from '../models/SystemSettings.js';
 
 // GET /api/curriculum/boards
 export const listBoards = async (req, res) => {
@@ -327,6 +328,55 @@ export const importCurriculum = async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// GET /api/curriculum/exam-chapters
+export const getExamAvailableChapters = async (req, res) => {
+  try {
+    const configs = await SystemSettings.find(
+      { key: new RegExp('^exam_config_') },
+      'key value.questions value.flowItems'
+    ).lean();
+
+    const validChapterIds = configs
+      .filter(c => {
+        const v = c.value || {};
+        return (v.questions && v.questions.length > 0) || (v.flowItems && v.flowItems.length > 0);
+      })
+      .map(c => c.key.replace('exam_config_', ''));
+
+    const chapters = await Chapter.find(
+      { _id: { $in: validChapterIds }, isPublished: { $ne: false } },
+      'title order subjectId'
+    )
+      .populate({
+        path: 'subjectId',
+        select: 'name classId boardId',
+        populate: { path: 'classId', select: 'name' }
+      })
+      .lean();
+
+    // Sort chapters numerically and by order
+    chapters.sort((a, b) => {
+      const getNum = (t) => {
+        const m = (t || '').match(/Chapter\s+(\d+)/i);
+        return m ? parseInt(m[1], 10) : 999999;
+      };
+      const numA = getNum(a.title);
+      const numB = getNum(b.title);
+      if (numA !== numB) return numA - numB;
+      return (a.order || 0) - (b.order || 0);
+    });
+
+    res.json({
+      success: true,
+      chapterIds: chapters.map(c => c._id.toString()),
+      chapters
+    });
+  } catch (error) {
+    console.error('Error fetching exam available chapters:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

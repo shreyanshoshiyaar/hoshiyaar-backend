@@ -1,5 +1,5 @@
 import express from 'express';
-import { importCurriculum, listBoards, listClasses, listSubjects, listChapters, listUnits, listModules, listItems, setItemImage, backfillSubjects, backfillUnits, seedBasicData, updateUnit, completeLessons, getRevisionCounts, toggleChapterPublishStatus } from '../controllers/curriculumController.js';
+import { importCurriculum, listBoards, listClasses, listSubjects, listChapters, listUnits, listModules, listItems, setItemImage, backfillSubjects, backfillUnits, seedBasicData, updateUnit, completeLessons, getRevisionCounts, toggleChapterPublishStatus, getExamAvailableChapters } from '../controllers/curriculumController.js';
 import { optionalAuth, protect, admin } from '../middleware/authMiddleware.js';
 import { cacheResponse } from '../middleware/cacheMiddleware.js';
 
@@ -9,6 +9,7 @@ router.post('/import', importCurriculum);
 router.get('/boards', listBoards);
 router.get('/classes', listClasses);
 router.get('/subjects', listSubjects);
+router.get('/exam-chapters', getExamAvailableChapters);
 router.get('/chapters', optionalAuth, listChapters);
 router.patch('/chapters/:id/publish', protect, admin, toggleChapterPublishStatus);
 router.get('/units', cacheResponse(900), listUnits);

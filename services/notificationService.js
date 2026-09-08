@@ -1,6 +1,7 @@
 import admin from 'firebase-admin';
 import User from '../models/User.js';
 import SystemSettings from '../models/SystemSettings.js';
+import ClassLevel from '../models/ClassLevel.js';
 import cron from 'node-cron';
 import { readFileSync } from 'fs';
 import path from 'path';
@@ -423,3 +424,312 @@ export const startLeaderboardRankCheckCron = () => {
   });
   console.log('🚀 Leaderboard Rank Check Cron Scheduled (Every 30 mins)');
 };
+
+// =========================================================================
+// 7-DAY CLASS-SPECIFIC CHAPTER NOTIFICATION CAMPAIGN (Sept 8 - Sept 15, 2026)
+// =========================================================================
+
+export const CHAPTER_CAMPAIGN_CONFIG = {
+  class6: {
+    chapterId: '6a3bb22176ac5c9f79af2fb8',
+    title: 'Chapter 6: Material Around Us',
+    url: '/learn?chapterId=6a3bb22176ac5c9f79af2fb8',
+    messages: [
+      { title: "🔍 Mystery of Materials!", body: "Hard, soft, light, heavy, or lustrous? Discover what things are made of in Chapter 6!" },
+      { title: "🧪 What are Things Made Of?", body: "Can you group objects by their properties? Tap to start Chapter 6: Material Around Us!" },
+      { title: "✨ Sort like a Scientist!", body: "Explore transparent, translucent & opaque objects today in Chapter 6!" },
+      { title: "💡 Science Adventure: Materials!", body: "Soluble or insoluble? Floating or sinking? Find out in Chapter 6 now!" },
+      { title: "🚀 Daily Brain Mission!", body: "Time to master Chapter 6: Material Around Us and collect your daily stars!" },
+      { title: "🎯 Ready for a Quick Challenge?", body: "Step into Chapter 6 and uncover the secrets of everyday materials!" },
+      { title: "⭐ Become a Materials Master!", body: "Finish this week strong with Chapter 6: Material Around Us. Tap to jump in!" }
+    ]
+  },
+  class7: {
+    chapterId: '6a75ce3ac7a9f6781800ceb4',
+    title: 'Chapter 5: Changes Around Us - Physical & Chemical',
+    url: '/learn?chapterId=6a75ce3ac7a9f6781800ceb4',
+    messages: [
+      { title: "⚗️ Mystery of Changes Around Us!", body: "Rusting, burning, melting, or dissolving? Explore Physical & Chemical changes in Chapter 5!" },
+      { title: "🔥 Reversible or Irreversible?", body: "Can a baked cake turn back into batter? Discover how matter transforms in Chapter 5!" },
+      { title: "🧪 Chemical Reactions in Action!", body: "Why does iron rust in moist air? Learn the science behind it in Chapter 5!" },
+      { title: "✨ Time for Science Magic!", body: "Spot the difference between physical & chemical changes today in Chapter 5!" },
+      { title: "⚡ Level Up in Science!", body: "Complete a quick mission on Changes Around Us and boost your score!" },
+      { title: "🔍 Detective Challenge!", body: "Can you identify which change is permanent? Test your skills in Chapter 5!" },
+      { title: "🌟 Chapter 5 is Calling!", body: "Collect your stars and master Changes Around Us today. Tap to play!" }
+    ]
+  },
+  class8: {
+    pressure: {
+      chapterId: '6a7bf454a52e6503592bc8aa',
+      title: 'Chapter 6: Pressure, Winds, Storms, and Cyclones',
+      url: '/learn?chapterId=6a7bf454a52e6503592bc8aa',
+      messages: [
+        { title: "🌪️ How do Cyclones & Storms Form?", body: "High-speed winds and low pressure create giant storms! Unlock Chapter 6 now." },
+        { title: "💨 The Power of Air Pressure!", body: "Air exerts massive pressure all around us. See how atmospheric pressure works in Chapter 6!" },
+        { title: "⚡ Lightning, Thunder & Cyclones!", body: "What creates charges in storm clouds? Discover the science of storms in Chapter 6!" }
+      ]
+    },
+    forces: {
+      chapterId: '6a54f36e3b9f14cd2bab17c2',
+      title: 'Chapter 5: Exploring Forces',
+      url: '/learn?chapterId=6a54f36e3b9f14cd2bab17c2',
+      messages: [
+        { title: "⚡ Feel the Power of Forces!", body: "Push, pull, friction, and gravity! Master the fundamental rules of motion in Chapter 5." },
+        { title: "🚀 What Makes Things Move?", body: "Explore contact and non-contact forces in Chapter 5. Collect your stars now!" },
+        { title: "🎯 Force & Motion Challenge!", body: "How does friction slow things down? Solve the mystery in Chapter 5: Exploring Forces!" }
+      ]
+    },
+    matter: {
+      chapterId: '6a901acf49caff82aeb5f0ff',
+      title: 'Chapter 7: Particulate Nature of Matter',
+      url: '/learn?chapterId=6a901acf49caff82aeb5f0ff',
+      messages: [
+        { title: "🔬 Atoms & Molecules in Action!", body: "What is everything around us made of? Zoom in to the particulate world in Chapter 7!" },
+        { title: "✨ The Invisible Building Blocks!", body: "How do particles behave in solids, liquids, and gases? Learn in Chapter 7 now." },
+        { title: "🧪 Dive into Matter!", body: "Explore Brownian motion and particle attraction today in Chapter 7!" }
+      ]
+    }
+  }
+};
+
+/**
+ * Sends targeted chapter push notifications for the specified time slot ('7pm' or '8pm').
+ * Supports isDryRun flag for safe testing without sending actual pushes.
+ */
+export const sendChapterNotificationsForSlot = async (slot = '7pm', isDryRun = false) => {
+  console.log(`\n📢 [Chapter Notification Campaign] Starting dispatch for slot: ${slot.toUpperCase()} (Dry-Run: ${isDryRun})...`);
+
+  // Campaign start date: Sept 8, 2026 IST
+  const campaignStartDate = new Date('2026-09-08T00:00:00+05:30');
+  const now = new Date();
+  const istTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  const diffDays = Math.floor((istTime - campaignStartDate) / (24 * 60 * 60 * 1000));
+  const dayIndex = Math.max(0, diffDays);
+
+  console.log(`📅 Campaign Day Index: ${dayIndex + 1} of 7 (Date: ${istTime.toDateString()})`);
+
+  // Determine which classes and chapters to dispatch in this slot
+  const dispatchPlan = [];
+
+  if (slot === '7pm') {
+    // 1. Class 6: Chapter 6: Material Around Us
+    const c6Config = CHAPTER_CAMPAIGN_CONFIG.class6;
+    const c6Msg = c6Config.messages[dayIndex % c6Config.messages.length];
+    dispatchPlan.push({
+      classLevel: '6',
+      chapterTitle: c6Config.title,
+      url: c6Config.url,
+      title: c6Msg.title,
+      body: c6Msg.body
+    });
+
+    // 2. Class 7: Chapter 5: Changes Around Us
+    const c7Config = CHAPTER_CAMPAIGN_CONFIG.class7;
+    const c7Msg = c7Config.messages[dayIndex % c7Config.messages.length];
+    dispatchPlan.push({
+      classLevel: '7',
+      chapterTitle: c7Config.title,
+      url: c7Config.url,
+      title: c7Msg.title,
+      body: c7Msg.body
+    });
+
+    // 3. Class 8: 7 PM slot rotates between Chapter 6 (Pressure) and Chapter 5 (Forces)
+    const c8Config = CHAPTER_CAMPAIGN_CONFIG.class8;
+    const c8Target = (dayIndex % 2 === 0) ? c8Config.pressure : c8Config.forces;
+    const c8Msg = c8Target.messages[Math.floor(dayIndex / 2) % c8Target.messages.length];
+    dispatchPlan.push({
+      classLevel: '8',
+      chapterTitle: c8Target.title,
+      url: c8Target.url,
+      title: c8Msg.title,
+      body: c8Msg.body
+    });
+  } else if (slot === '8pm') {
+    // 8 PM slot is for Class 8 (2nd chapter of the day): rotates between Chapter 7 (Matter) and Chapter 5 (Forces)
+    const c8Config = CHAPTER_CAMPAIGN_CONFIG.class8;
+    const c8Target = (dayIndex % 2 === 0) ? c8Config.matter : c8Config.pressure;
+    const c8Msg = c8Target.messages[Math.floor(dayIndex / 2) % c8Target.messages.length];
+    dispatchPlan.push({
+      classLevel: '8',
+      chapterTitle: c8Target.title,
+      url: c8Target.url,
+      title: c8Msg.title,
+      body: c8Msg.body
+    });
+  }
+
+  let totalRecipients = 0;
+
+  for (const item of dispatchPlan) {
+    const clsDoc = await ClassLevel.findOne({ name: item.classLevel });
+    const query = {
+      fcmToken: { $ne: null },
+      $or: [
+        { classLevel: item.classLevel },
+        { classLevel: `Class ${item.classLevel}` },
+        { classLevel: `class ${item.classLevel}` }
+      ]
+    };
+    if (clsDoc) {
+      query.$or.push({ classId: clsDoc._id });
+    }
+
+    const users = await User.find(query, 'name fcmToken classLevel currentStreak');
+    const validUsers = users.filter(u => u.fcmToken && u.fcmToken.length > 10);
+
+    // Deduplicate by fcmToken
+    const uniqueDeviceMap = new Map();
+    validUsers.forEach(user => {
+      const existing = uniqueDeviceMap.get(user.fcmToken);
+      const currentStreak = user.currentStreak || 0;
+      if (!existing || currentStreak > (existing.currentStreak || 0)) {
+        uniqueDeviceMap.set(user.fcmToken, user);
+      }
+    });
+    const uniqueValidUsers = Array.from(uniqueDeviceMap.values());
+
+    console.log(`\n🎯 Class ${item.classLevel}: Target "${item.chapterTitle}"`);
+    console.log(`   Recipients: ${uniqueValidUsers.length} active devices`);
+    console.log(`   Title: "${item.title}"`);
+    console.log(`   Body: "${item.body}"`);
+    console.log(`   Deep-Link: "${item.url}"`);
+
+    totalRecipients += uniqueValidUsers.length;
+
+    if (isDryRun) {
+      continue;
+    }
+
+    const messages = uniqueValidUsers.map(user => ({
+      notification: {
+        title: item.title,
+        body: item.body
+      },
+      data: {
+        url: item.url,
+        type: 'chapter_promo',
+        chapterId: item.url.split('chapterId=')[1] || ''
+      },
+      token: user.fcmToken,
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: 'study_reminders',
+          defaultSound: true,
+          defaultVibrateTimings: true,
+        }
+      }
+    }));
+
+    const batches = [];
+    for (let i = 0; i < messages.length; i += 500) {
+      batches.push(messages.slice(i, i + 500));
+    }
+
+    for (const batch of batches) {
+      const response = await admin.messaging().sendEach(batch);
+      console.log(`   🚀 Sent batch of ${batch.length} (Success: ${response.successCount}, Failures: ${response.failureCount})`);
+
+      if (response.failureCount > 0) {
+        const failedTokens = [];
+        response.responses.forEach((resp, idx) => {
+          if (!resp.success) {
+            failedTokens.push(batch[idx].token);
+          }
+        });
+
+        if (failedTokens.length > 0) {
+          await User.updateMany(
+            { fcmToken: { $in: failedTokens } },
+            { $set: { fcmToken: null } }
+          );
+        }
+      }
+    }
+  }
+
+  console.log(`\n✅ [Chapter Notification Campaign] Slot ${slot.toUpperCase()} completed. Total devices reached: ${totalRecipients}\n`);
+  return { slot, totalRecipients };
+};
+
+/**
+ * Starts the 7-day Chapter Push Notification Cron at 7:00 PM IST and 8:00 PM IST.
+ */
+export const startChapterSpecificNotificationCron = () => {
+  // 1. 7:00 PM IST (19:00 IST)
+  cron.schedule('0 19 * * *', async () => {
+    console.log('⏰ Running Chapter Specific Notification Cron (7 PM IST)...');
+    try {
+      const now = new Date();
+      const istTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+      const campaignStartDate = new Date('2026-09-08T00:00:00+05:30');
+      const diffDays = Math.floor((istTime - campaignStartDate) / (24 * 60 * 60 * 1000));
+      
+      // Active for 7 days (Sept 8 to Sept 15 inclusive)
+      if (diffDays < 0 || diffDays > 7) {
+        console.log(`📅 Chapter Campaign not active for day diff ${diffDays}. Skipping.`);
+        return;
+      }
+
+      const todayString = istTime.toISOString().split('T')[0];
+      const lockKey = `cron_chapter_push_7pm_${todayString}`;
+
+      const lock = await SystemSettings.findOneAndUpdate(
+        { key: lockKey },
+        { $setOnInsert: { key: lockKey, value: 'locked', description: `Lock for chapter push 7pm on ${todayString}` } },
+        { upsert: true, returnDocument: 'before' }
+      );
+
+      if (lock) {
+        console.log(`🔒 Chapter push 7 PM already ran today. Skipping.`);
+        return;
+      }
+
+      await sendChapterNotificationsForSlot('7pm', false);
+    } catch (error) {
+      console.error('Error in Chapter Notification Cron (7 PM):', error);
+    }
+  }, {
+    timezone: 'Asia/Kolkata'
+  });
+
+  // 2. 8:00 PM IST (20:00 IST)
+  cron.schedule('0 20 * * *', async () => {
+    console.log('⏰ Running Chapter Specific Notification Cron (8 PM IST)...');
+    try {
+      const now = new Date();
+      const istTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+      const campaignStartDate = new Date('2026-09-08T00:00:00+05:30');
+      const diffDays = Math.floor((istTime - campaignStartDate) / (24 * 60 * 60 * 1000));
+
+      if (diffDays < 0 || diffDays > 7) {
+        console.log(`📅 Chapter Campaign not active for day diff ${diffDays}. Skipping.`);
+        return;
+      }
+
+      const todayString = istTime.toISOString().split('T')[0];
+      const lockKey = `cron_chapter_push_8pm_${todayString}`;
+
+      const lock = await SystemSettings.findOneAndUpdate(
+        { key: lockKey },
+        { $setOnInsert: { key: lockKey, value: 'locked', description: `Lock for chapter push 8pm on ${todayString}` } },
+        { upsert: true, returnDocument: 'before' }
+      );
+
+      if (lock) {
+        console.log(`🔒 Chapter push 8 PM already ran today. Skipping.`);
+        return;
+      }
+
+      await sendChapterNotificationsForSlot('8pm', false);
+    } catch (error) {
+      console.error('Error in Chapter Notification Cron (8 PM):', error);
+    }
+  }, {
+    timezone: 'Asia/Kolkata'
+  });
+
+  console.log('🚀 Chapter Specific Notification Crons Scheduled (Daily 7:00 PM & 8:00 PM IST for 7 Days)');
+};
+

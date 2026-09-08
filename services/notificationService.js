@@ -435,13 +435,13 @@ export const CHAPTER_CAMPAIGN_CONFIG = {
     title: 'Chapter 6: Material Around Us',
     url: '/learn?chapterId=6a3bb22176ac5c9f79af2fb8',
     messages: [
-      { title: "🔍 Mystery of Materials!", body: "Hard, soft, light, heavy, or lustrous? Discover what things are made of in Chapter 6!" },
-      { title: "🧪 What are Things Made Of?", body: "Can you group objects by their properties? Tap to start Chapter 6: Material Around Us!" },
-      { title: "✨ Sort like a Scientist!", body: "Explore transparent, translucent & opaque objects today in Chapter 6!" },
-      { title: "💡 Science Adventure: Materials!", body: "Soluble or insoluble? Floating or sinking? Find out in Chapter 6 now!" },
-      { title: "🚀 Daily Brain Mission!", body: "Time to master Chapter 6: Material Around Us and collect your daily stars!" },
-      { title: "🎯 Ready for a Quick Challenge?", body: "Step into Chapter 6 and uncover the secrets of everyday materials!" },
-      { title: "⭐ Become a Materials Master!", body: "Finish this week strong with Chapter 6: Material Around Us. Tap to jump in!" }
+      { title: "🚨 NEW CHAPTER ALERT! 🚀", body: "Chapter 6: Material Around Us is now live! Discover the secrets of what things are made of. Tap to explore!" },
+      { title: "🎉 New Chapter Alert: Material Around Us!", body: "Can you sort objects by their properties? Tap to dive into brand-new Chapter 6!" },
+      { title: "📢 New Chapter Dropped! 🔬", body: "Explore transparent, translucent & opaque materials in your new chapter. Start now!" },
+      { title: "⚡ Fresh Chapter Alert! 🧪", body: "Soluble or insoluble? Floating or sinking? Find out in brand-new Chapter 6 now!" },
+      { title: "⭐ New Chapter Alert: Collect Your Stars!", body: "Chapter 6: Material Around Us is waiting for you! Tap to play and level up!" },
+      { title: "🎯 New Chapter Mission! 🔍", body: "Step into Chapter 6 and uncover the secrets of everyday materials. Tap to open!" },
+      { title: "🚀 New Chapter Alert!", body: "Master Chapter 6: Material Around Us today and top the leaderboard! Tap to jump in!" }
     ]
   },
   class7: {
@@ -449,13 +449,13 @@ export const CHAPTER_CAMPAIGN_CONFIG = {
     title: 'Chapter 5: Changes Around Us - Physical & Chemical',
     url: '/learn?chapterId=6a75ce3ac7a9f6781800ceb4',
     messages: [
-      { title: "⚗️ Mystery of Changes Around Us!", body: "Rusting, burning, melting, or dissolving? Explore Physical & Chemical changes in Chapter 5!" },
-      { title: "🔥 Reversible or Irreversible?", body: "Can a baked cake turn back into batter? Discover how matter transforms in Chapter 5!" },
-      { title: "🧪 Chemical Reactions in Action!", body: "Why does iron rust in moist air? Learn the science behind it in Chapter 5!" },
-      { title: "✨ Time for Science Magic!", body: "Spot the difference between physical & chemical changes today in Chapter 5!" },
-      { title: "⚡ Level Up in Science!", body: "Complete a quick mission on Changes Around Us and boost your score!" },
-      { title: "🔍 Detective Challenge!", body: "Can you identify which change is permanent? Test your skills in Chapter 5!" },
-      { title: "🌟 Chapter 5 is Calling!", body: "Collect your stars and master Changes Around Us today. Tap to play!" }
+      { title: "🚨 NEW CHAPTER ALERT! ⚗️", body: "Chapter 5: Changes Around Us is now live! Explore how matter transforms. Tap to begin!" },
+      { title: "🎉 New Chapter Alert: Changes Around Us!", body: "Rusting, burning, melting, or dissolving? Discover the chemistry in your new chapter!" },
+      { title: "📢 New Chapter Dropped! 🔥", body: "Can a baked cake turn back into batter? Explore reversible & irreversible changes in Chapter 5!" },
+      { title: "⚡ Fresh Chapter Alert! 🧪", body: "Why does iron rust in moist air? Uncover chemical reactions in your brand-new chapter!" },
+      { title: "⭐ New Chapter Alert: Collect Your Stars!", body: "Complete the new Chapter 5 mission and collect stars for your streak! Tap to play!" },
+      { title: "🔍 New Chapter Detective Challenge!", body: "Can you identify which change is permanent? Test your skills in brand-new Chapter 5!" },
+      { title: "🚀 New Chapter Alert!", body: "Master Chapter 5: Changes Around Us today and boost your science score. Tap to jump in!" }
     ]
   },
   class8: {
@@ -464,9 +464,9 @@ export const CHAPTER_CAMPAIGN_CONFIG = {
       title: 'Chapter 6: Pressure, Winds, Storms, and Cyclones',
       url: '/learn?chapterId=6a7bf454a52e6503592bc8aa',
       messages: [
-        { title: "🌪️ How do Cyclones & Storms Form?", body: "High-speed winds and low pressure create giant storms! Unlock Chapter 6 now." },
-        { title: "💨 The Power of Air Pressure!", body: "Air exerts massive pressure all around us. See how atmospheric pressure works in Chapter 6!" },
-        { title: "⚡ Lightning, Thunder & Cyclones!", body: "What creates charges in storm clouds? Discover the science of storms in Chapter 6!" }
+        { title: "🚨 NEW CHAPTER ALERT! 🌪️", body: "Chapter 6: Pressure, Winds & Cyclones is now live! Tap to uncover how giant storms form." },
+        { title: "🎉 New Chapter Alert: Pressure & Storms!", body: "Air exerts massive pressure all around us! See atmospheric pressure in action in new Chapter 6." },
+        { title: "⚡ Fresh Chapter Alert: Cyclones & Lightning!", body: "What creates electric charges in storm clouds? Discover the science in brand-new Chapter 6!" }
       ]
     },
     forces: {
@@ -474,9 +474,9 @@ export const CHAPTER_CAMPAIGN_CONFIG = {
       title: 'Chapter 5: Exploring Forces',
       url: '/learn?chapterId=6a54f36e3b9f14cd2bab17c2',
       messages: [
-        { title: "⚡ Feel the Power of Forces!", body: "Push, pull, friction, and gravity! Master the fundamental rules of motion in Chapter 5." },
-        { title: "🚀 What Makes Things Move?", body: "Explore contact and non-contact forces in Chapter 5. Collect your stars now!" },
-        { title: "🎯 Force & Motion Challenge!", body: "How does friction slow things down? Solve the mystery in Chapter 5: Exploring Forces!" }
+        { title: "🚨 NEW CHAPTER ALERT! ⚡", body: "Chapter 5: Exploring Forces is now live! Push, pull, friction, and gravity await you. Tap to start!" },
+        { title: "🎉 New Chapter Alert: Exploring Forces!", body: "What makes things move or stop? Master the fundamental rules of motion in new Chapter 5!" },
+        { title: "🚀 Fresh Chapter Dropped! 🎯", body: "Contact vs non-contact forces: solve the mysteries of motion in brand-new Chapter 5!" }
       ]
     },
     matter: {
@@ -484,9 +484,9 @@ export const CHAPTER_CAMPAIGN_CONFIG = {
       title: 'Chapter 7: Particulate Nature of Matter',
       url: '/learn?chapterId=6a901acf49caff82aeb5f0ff',
       messages: [
-        { title: "🔬 Atoms & Molecules in Action!", body: "What is everything around us made of? Zoom in to the particulate world in Chapter 7!" },
-        { title: "✨ The Invisible Building Blocks!", body: "How do particles behave in solids, liquids, and gases? Learn in Chapter 7 now." },
-        { title: "🧪 Dive into Matter!", body: "Explore Brownian motion and particle attraction today in Chapter 7!" }
+        { title: "🚨 NEW CHAPTER ALERT! 🔬", body: "Chapter 7: Particulate Nature of Matter is now live! Zoom into atoms and molecules. Tap to explore!" },
+        { title: "🎉 New Chapter Alert: Nature of Matter!", body: "How do particles behave in solids, liquids, and gases? Discover the building blocks in new Chapter 7!" },
+        { title: "🧪 Fresh Chapter Dropped! ✨", body: "Explore Brownian motion and particle attraction in your brand-new chapter. Tap to jump in!" }
       ]
     }
   }

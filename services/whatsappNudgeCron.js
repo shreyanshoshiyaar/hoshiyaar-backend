@@ -43,6 +43,7 @@ export const startWhatsappNudgeCron = () => {
         console.log(`⚠️ Meta WhatsApp Nudges restricted to test numbers: ${testNumbers.join(', ')}`);
       }
 
+      /* --- 0 MIN NUDGE HALTED TEMPORARILY AS PER REQUEST ---
       // 1. 0 MIN (No module started) nudge after 30 minutes
       const noModuleUsers = await User.find({
         ...queryFilter,
@@ -69,6 +70,7 @@ export const startWhatsappNudgeCron = () => {
           }
         } catch (e) { console.error('Failed to send 0 min nudge to', user.phone); }
       }
+      --- END 0 MIN NUDGE --- */
 
       /* --- HALTED TEMPORARILY AS PER REQUEST ---
       // 2. MISSION STARTED (Started but not completed) nudge after 2 hours

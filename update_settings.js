@@ -12,7 +12,7 @@ async function run() {
     console.log("✅ Connected to MongoDB.");
 
     const key = 'min_android_version';
-    const value = 999;
+    const value = 55;
 
     const updated = await SystemSettings.findOneAndUpdate(
       { key: key },

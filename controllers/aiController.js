@@ -18,22 +18,24 @@ export const evaluateDescriptiveAnswer = async (req, res) => {
     }
 
     // Prepare prompt
-    const prompt = `You are a strict but encouraging teacher evaluating a student's answer.
+    const prompt = `You are an expert, encouraging teacher evaluating a student's answer in a school exam.
 ${subjectKnowledge ? `Context / Subject Knowledge: "${subjectKnowledge}"` : ''}
 Question: "${question}"
 Student's Answer: "${userAnswer}"
-${expectedAnswer ? `Expected Idea/Answer: "${expectedAnswer}"` : ''}
+${expectedAnswer ? `Expected Idea / Model Answer: "${expectedAnswer}"` : ''}
 
-Evaluate the student's answer. Return a STRICT JSON object. Do not include markdown blocks, newlines, or unescaped quotes inside the values. Ensure the output can be parsed by JSON.parse().
-Format:
+Evaluate the student's answer thoroughly against the expected idea/syllabus.
+Return a STRICT JSON object with NO markdown blocks, newlines inside strings, or trailing commas.
+Format exactly:
 {
-  "right": "What the student got right (or null if completely wrong).",
-  "wrong": "What the student got wrong or is incomplete (or null if perfect).",
-  "missing": "What important concepts are missing from the answer (or null).",
-  "grammar": "Any grammar or syntax corrections (or null if grammar is fine).",
+  "right": "Highlight specific accurate points, facts, or concepts the student correctly mentioned. If completely blank or wrong, state: 'No correct points identified in this answer.'",
+  "wrong": "Highlight specific inaccuracies, misconceptions, or incomplete statements. If the student's answer is accurate, state: 'No conceptual errors found.'",
+  "missing": "Detail the essential concepts, scientific keywords, or reasoning from the model answer that were omitted and should be learned. Always provide helpful learning points.",
+  "grammar": "Provide constructive advice on grammar, sentence clarity, spelling, or scientific phrasing. If grammar is great, give a tip on advanced phrasing or presentation.",
   "score": 85,
   "isCorrect": true
-}`;
+}
+Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >= 70, false otherwise. Never leave 'missing', 'wrong', or 'grammar' as null or empty.`;
 
     // Call Gemini API using axios with retry logic for 503 errors
     const candidateModels = [
@@ -114,6 +116,17 @@ Format:
       } catch (innerError) {
         throw new Error(`Failed to parse AI JSON: ${innerError.message}. Raw output: ${textOutput}`);
       }
+    }
+
+    // Ensure non-null feedback fields
+    if (!parsedResult.missing || parsedResult.missing === 'null') {
+      parsedResult.missing = expectedAnswer ? `Review these key points: ${expectedAnswer}` : "Review core chapter concepts for completeness.";
+    }
+    if (!parsedResult.wrong || parsedResult.wrong === 'null') {
+      parsedResult.wrong = parsedResult.isCorrect ? "No major conceptual errors found." : "Explanation needs more precision.";
+    }
+    if (!parsedResult.grammar || parsedResult.grammar === 'null') {
+      parsedResult.grammar = "Express thoughts in clear, structured sentences with relevant terms.";
     }
 
     return res.json(parsedResult);
@@ -201,28 +214,29 @@ export const evaluateBatchAnswers = async (req, res) => {
 Item ID: ${item.id}
 Question: "${item.question}"
 Student's Answer: "${item.userAnswer}"
-${item.expectedAnswer ? `Expected Idea: "${item.expectedAnswer}"` : ''}
+${item.expectedAnswer ? `Expected Idea / Model Answer: "${item.expectedAnswer}"` : ''}
 ---`).join('\n');
 
-    const prompt = `You are a strict but encouraging teacher evaluating multiple answers from a student.
+    const prompt = `You are an expert, encouraging teacher evaluating answers from a student in a school exam.
 ${subjectKnowledge ? `Context / Subject Knowledge: "${subjectKnowledge}"` : ''}
-Below are several questions along with the student's answers.
+Below are questions along with the student's answers and model answers.
 
 ${promptContext}
 
-Evaluate each answer. Return a STRICT JSON array of objects. Do not include markdown blocks, newlines, or unescaped quotes inside the values. Ensure the output can be parsed by JSON.parse().
-Format exactly like this example array:
+Evaluate each answer thoroughly. Return a STRICT JSON array of objects with NO markdown formatting, backticks, or trailing commas.
+Format exactly:
 [
   {
     "id": "match the Item ID",
-    "right": "What the student got right (or null if completely wrong).",
-    "wrong": "What the student got wrong or is incomplete (or null if perfect).",
-    "missing": "What important concepts are missing from the answer (or null).",
-    "grammar": "Any grammar or syntax corrections (or null if grammar is fine).",
+    "right": "Highlight specific accurate points, facts, or concepts the student correctly mentioned. If blank/wrong, state: 'No correct points identified in this answer.'",
+    "wrong": "Highlight specific inaccuracies, misconceptions, or incomplete statements. If accurate, state: 'No conceptual errors found.'",
+    "missing": "Detail essential concepts, scientific keywords, or reasoning from the model answer that were omitted. Always provide helpful learning points.",
+    "grammar": "Provide constructive advice on grammar, clarity, spelling, or scientific phrasing. Never return null.",
     "score": 85,
     "isCorrect": true
   }
-]`;
+]
+Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >= 70, false otherwise. Never leave 'missing', 'wrong', or 'grammar' as null or empty.`;
 
     const candidateModels = [
       'gemini-3.6-flash',
@@ -301,17 +315,34 @@ Format exactly like this example array:
 
     // Ensure all items have a result, filling fallback if missing
     items.forEach(item => {
-      const exists = parsedResult.some(r => String(r.id) === String(item.id));
-      if (!exists) {
-        parsedResult.push({
+      let r = parsedResult.find(resItem => String(resItem.id) === String(item.id));
+      const hasAnswer = item.userAnswer && item.userAnswer.trim() && item.userAnswer.trim().toLowerCase() !== 'no answer submitted';
+      
+      if (!r) {
+        r = {
           id: item.id,
-          right: "Answer submitted.",
-          wrong: null,
-          missing: null,
-          grammar: null,
-          score: 60,
-          isCorrect: true
-        });
+          right: hasAnswer ? "Answer submitted." : "No answer was submitted for this question.",
+          wrong: hasAnswer ? "Incomplete or inaccurate explanation." : "Question was left unanswered.",
+          missing: item.expectedAnswer ? `Expected key concepts: ${item.expectedAnswer}` : "Core conceptual points from the lesson.",
+          grammar: hasAnswer ? "Express thoughts clearly with relevant subject terminology." : "N/A (No answer submitted)",
+          score: hasAnswer ? 35 : 0,
+          isCorrect: false
+        };
+        parsedResult.push(r);
+      } else {
+        // Sanitize any nulls returned by AI
+        if (!r.right || r.right === 'null') {
+          r.right = r.isCorrect ? "Answer covers key relevant points." : "No distinct correct points identified.";
+        }
+        if (!r.wrong || r.wrong === 'null') {
+          r.wrong = r.isCorrect ? "No major conceptual errors found." : (item.expectedAnswer ? `Review expected concept: ${item.expectedAnswer}` : "Explanation needs more detail.");
+        }
+        if (!r.missing || r.missing === 'null') {
+          r.missing = item.expectedAnswer ? `Key points to remember: ${item.expectedAnswer}` : "Detailed reasoning and supporting examples.";
+        }
+        if (!r.grammar || r.grammar === 'null') {
+          r.grammar = "Use precise scientific terms and clear sentence structure.";
+        }
       }
     });
 
@@ -346,10 +377,10 @@ Format exactly like this example array:
               question: q.question,
               userAnswer: q.userAnswer || '',
               expectedAnswer: q.expectedAnswer || '',
-              right: isCorrect ? 'Correct option selected.' : null,
-              wrong: isCorrect ? null : `The correct answer was: ${q.expectedAnswer}`,
-              missing: null,
-              grammar: null,
+              right: isCorrect ? `Correct option selected: "${q.expectedAnswer}"` : 'Option selected was incorrect.',
+              wrong: isCorrect ? 'No errors.' : (q.expectedAnswer ? `The correct answer was: "${q.expectedAnswer}"` : 'Incorrect option chosen.'),
+              missing: isCorrect ? 'None' : (q.expectedAnswer ? `Key answer: "${q.expectedAnswer}"` : 'Correct option'),
+              grammar: 'N/A (Multiple Choice Question)',
               score: isCorrect ? 100 : 0,
               isCorrect: Boolean(isCorrect)
             };
@@ -360,14 +391,13 @@ Format exactly like this example array:
               question: q.question,
               userAnswer: q.userAnswer || '',
               expectedAnswer: q.expectedAnswer || '',
-              right: fb.right || null,
-              wrong: fb.wrong || null,
-              missing: fb.missing || null,
-              grammar: fb.grammar || null,
-              score: Number(fb.score || 0),
+              right: fb.right || 'Points covered in answer.',
+              wrong: fb.wrong || 'Conceptual gaps.',
+              missing: fb.missing || (q.expectedAnswer ? `Expected: ${q.expectedAnswer}` : 'Missing details.'),
+              grammar: fb.grammar || 'Check phrasing and terminology.',
+              score: fb.score !== undefined ? Number(fb.score) : 0,
               isCorrect: Boolean(fb.isCorrect)
             };
-          }
         });
       } else {
         evaluatedQuestions = items.map(item => {

@@ -398,6 +398,7 @@ Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >=
               score: fb.score !== undefined ? Number(fb.score) : 0,
               isCorrect: Boolean(fb.isCorrect)
             };
+          }
         });
       } else {
         evaluatedQuestions = items.map(item => {

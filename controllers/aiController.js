@@ -330,7 +330,9 @@ Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >=
         return Boolean(c1 && c2 && c1 === c2);
       });
 
-      if (!r && parsedResult[idx] && !items.some((it, otherIdx) => otherIdx !== idx && String(parsedResult[idx].id) === String(it.id))) {
+      if (r) {
+        r.id = item.id;
+      } else if (parsedResult[idx] && !items.some((it, otherIdx) => otherIdx !== idx && String(parsedResult[idx].id) === String(it.id))) {
         r = parsedResult[idx];
         r.id = item.id;
       }

@@ -68,7 +68,7 @@ Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >=
               headers: {
                 'Content-Type': 'application/json'
               },
-              timeout: 15000
+              timeout: 45000
             }
           );
           if (response?.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
@@ -265,7 +265,7 @@ Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >=
               contents: [{ parts: [{ text: prompt }] }],
               generationConfig: { response_mime_type: "application/json", temperature: 0.2, maxOutputTokens: 4096 }
             },
-            { headers: { 'Content-Type': 'application/json' }, timeout: 15000 }
+            { headers: { 'Content-Type': 'application/json' }, timeout: 45000 }
           );
           if (response?.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
             break;

@@ -131,7 +131,10 @@ Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >=
       parsedResult.grammar = "Express thoughts in clear, structured sentences with relevant terms.";
     }
 
-    return res.json(parsedResult);
+    return res.json({
+      ...parsedResult,
+      aiEvaluated: true
+    });
 
   } catch (error) {
     const aiErrorMessage = error?.response?.data?.error?.message;
@@ -318,8 +321,20 @@ Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >=
     }
 
     // Ensure all items have a result, filling fallback if missing
-    items.forEach(item => {
-      let r = parsedResult.find(resItem => String(resItem.id) === String(item.id));
+    items.forEach((item, idx) => {
+      let r = parsedResult.find(resItem => {
+        if (!resItem) return false;
+        if (String(resItem.id) === String(item.id)) return true;
+        const c1 = String(resItem.id).replace(/\D/g, '');
+        const c2 = String(item.id).replace(/\D/g, '');
+        return Boolean(c1 && c2 && c1 === c2);
+      });
+
+      if (!r && parsedResult[idx] && !items.some((it, otherIdx) => otherIdx !== idx && String(parsedResult[idx].id) === String(it.id))) {
+        r = parsedResult[idx];
+        r.id = item.id;
+      }
+
       const hasAnswer = item.userAnswer && item.userAnswer.trim() && item.userAnswer.trim().toLowerCase() !== 'no answer submitted';
       
       if (!r) {
@@ -330,10 +345,12 @@ Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >=
           missing: item.expectedAnswer ? `Expected key concepts: ${item.expectedAnswer}` : "Core conceptual points from the lesson.",
           grammar: hasAnswer ? "Express thoughts clearly with relevant subject terminology." : "N/A (No answer submitted)",
           score: hasAnswer ? 35 : 0,
-          isCorrect: false
+          isCorrect: false,
+          aiEvaluated: false
         };
         parsedResult.push(r);
       } else {
+        r.aiEvaluated = true;
         // Sanitize any nulls returned by AI
         if (!r.right || r.right === 'null') {
           r.right = r.isCorrect ? "Answer covers key relevant points." : "No distinct correct points identified.";
@@ -389,7 +406,13 @@ Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >=
               isCorrect: Boolean(isCorrect)
             };
           } else {
-            const fb = parsedResult.find(r => String(r.id) === String(q.id)) || {};
+            const fb = parsedResult.find(r => {
+              if (!r) return false;
+              if (String(r.id) === String(q.id)) return true;
+              const c1 = String(r.id).replace(/\D/g, '');
+              const c2 = String(q.id).replace(/\D/g, '');
+              return Boolean(c1 && c2 && c1 === c2);
+            }) || {};
             return {
               id: String(q.id),
               question: q.question,
@@ -406,7 +429,13 @@ Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >=
         });
       } else {
         evaluatedQuestions = items.map(item => {
-          const fb = parsedResult.find(r => String(r.id) === String(item.id)) || {};
+          const fb = parsedResult.find(r => {
+            if (!r) return false;
+            if (String(r.id) === String(item.id)) return true;
+            const c1 = String(r.id).replace(/\D/g, '');
+            const c2 = String(item.id).replace(/\D/g, '');
+            return Boolean(c1 && c2 && c1 === c2);
+          }) || {};
           return {
             id: String(item.id),
             question: item.question,

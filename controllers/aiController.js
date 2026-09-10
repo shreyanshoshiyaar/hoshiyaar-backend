@@ -35,6 +35,13 @@ Format exactly:
   "score": 85,
   "isCorrect": true
 }
+Scoring Guidelines:
+- Award fair partial credit on a scale of 0 to 100 based on understanding:
+  * 90-100: Excellent, covers all key scientific concepts accurately.
+  * 70-85: Good understanding, covers most core points with minor omissions or slight phrasing inaccuracies.
+  * 40-65: Partially correct, student shows basic intuition or partial facts (e.g. valid practical reasons but missing scientific terminology).
+  * 15-35: Minimal understanding, vague or mostly inaccurate with only a small relevant point.
+  * 0: Completely incorrect, irrelevant, or blank.
 Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >= 70, false otherwise. Never leave 'missing', 'wrong', or 'grammar' as null or empty.`;
 
     // Call Gemini API using axios with retry logic for 503 errors
@@ -241,6 +248,13 @@ Format exactly:
     "isCorrect": true
   }
 ]
+Scoring Guidelines:
+- Award fair partial credit on a scale of 0 to 100 based on understanding:
+  * 90-100: Excellent, covers all key scientific concepts accurately.
+  * 70-85: Good understanding, covers most core points with minor omissions or slight phrasing inaccuracies.
+  * 40-65: Partially correct, student shows basic intuition or partial facts (e.g. valid practical reasons but missing scientific terminology).
+  * 15-35: Minimal understanding, vague or mostly inaccurate with only a small relevant point.
+  * 0: Completely incorrect, irrelevant, or blank.
 Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >= 70, false otherwise. Never leave 'missing', 'wrong', or 'grammar' as null or empty.`;
 
     const candidateModels = [

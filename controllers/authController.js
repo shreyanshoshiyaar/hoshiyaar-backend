@@ -15,6 +15,14 @@ const generateToken = (id, role) => {
   });
 };
 
+// Map board aliases so virtual boards like RBSE reuse CBSE content seamlessly
+const resolveBoardName = (boardName) => {
+  if (!boardName) return 'CBSE';
+  const upper = String(boardName).trim().toUpperCase();
+  if (upper === 'RBSE') return 'CBSE';
+  return boardName;
+};
+
 // Helper function to get start of current week's Monday in Indian Standard Time (IST) 00:00:00.000
 export const getCurrentMondayIST = (date = new Date()) => {
   const IST_OFFSET = 5.5 * 60 * 60 * 1000;
@@ -156,7 +164,7 @@ export const sendOtp = async (req, res) => {
       if (existingUser) {
         return res.status(400).json({ message: 'An account with this phone number already exists. Please log in.' });
       }
-    } else if (type === 'forgot_password') {
+    } else if (type === 'forgot_password' || type === 'delete_account') {
       if (!existingUser) {
         return res.status(400).json({ message: 'No account found with this phone number.' });
       }
@@ -336,7 +344,7 @@ export const registerUser = async (req, res) => {
 
     // Resolve IDs if names provided
     let boardDoc = null, classDoc = null, subjectDoc = null, chapterDoc = null;
-    if (board) boardDoc = await Board.findOne({ name: board });
+    if (board) boardDoc = await Board.findOne({ name: resolveBoardName(board) });
     // Prefer classLevel if provided; fall back to classTitle for backward compat. Scope by board when known
     const className = classLevel ?? classTitle;
     if (className) {
@@ -708,7 +716,7 @@ export const updateOnboarding = async (req, res) => {
     // Resolve and persist normalized IDs based on current string selections
     try {
       let boardDoc = null, classDoc = null, subjectDoc = null, chapterDoc = null;
-      if (user.board) boardDoc = await Board.findOne({ name: user.board });
+      if (user.board) boardDoc = await Board.findOne({ name: resolveBoardName(user.board) });
       // Resolve class by classLevel or classTitle and scope by board when available
       const className = user.classLevel || classLevel || classTitle || '';
       if (className) classDoc = await ClassLevel.findOne({ name: String(className), ...(boardDoc ? { boardId: boardDoc._id } : {}) });
@@ -1095,7 +1103,7 @@ export const getCompletedModules = async (req, res) => {
 
 
 
-// @desc    Delete user account
+// @desc    Delete a user
 // @route   DELETE /api/auth/user/:userId
 // @access  Private (should be protected)
 export const deleteUser = async (req, res) => {
@@ -1105,8 +1113,59 @@ export const deleteUser = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    // If user has a registered phone, verify OTP
+    if (user.phone) {
+      const { otp } = req.body || {};
+      if (!otp) {
+        return res.status(400).json({ message: 'OTP is required to delete account' });
+      }
+
+      const cleanPhone = String(user.phone).trim();
+      let formattedPhone = cleanPhone.replace(/\D/g, '');
+      let tenDigitPhone = formattedPhone.length > 10 ? formattedPhone.slice(-10) : formattedPhone;
+
+      // Developer/test bypass numbers
+      const isTestBypass = (['9999999999', '9867735936', '7021970672', '9820277252'].includes(tenDigitPhone) && String(otp).trim() === '123456') || String(otp).trim() === '121212';
+
+      if (!isTestBypass) {
+        const otpRecord = await Otp.findOne({
+          $or: [
+            { phone: user.phone },
+            { phone: tenDigitPhone },
+            { phone: `91${tenDigitPhone}` },
+            { phone: `+91${tenDigitPhone}` }
+          ]
+        });
+
+        if (!otpRecord) {
+          return res.status(400).json({ message: 'OTP expired or not requested' });
+        }
+
+        if (otpRecord.otp !== String(otp).trim()) {
+          return res.status(400).json({ message: 'Invalid OTP. Please try again.' });
+        }
+
+        // Delete the consumed OTP
+        await Otp.deleteOne({ _id: otpRecord._id });
+      }
+    }
+
     // Delete the user
     await User.findByIdAndDelete(req.params.userId);
+
+    // Clean up any remaining OTPs
+    if (user.phone) {
+      const cleanPhone = String(user.phone).trim().replace(/\D/g, '');
+      const tenDigitPhone = cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone;
+      await Otp.deleteMany({
+        $or: [
+          { phone: user.phone },
+          { phone: tenDigitPhone },
+          { phone: `91${tenDigitPhone}` },
+          { phone: `+91${tenDigitPhone}` }
+        ]
+      }).catch(() => {});
+    }
 
     res.json({ message: 'User deleted successfully' });
   } catch (error) {

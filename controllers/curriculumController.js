@@ -9,6 +9,14 @@ import Unit from '../models/Unit.js';
 import DefaultRevisionQuestion from '../models/DefaultRevisionQuestion.js';
 import SystemSettings from '../models/SystemSettings.js';
 
+// Map board aliases so virtual boards like RBSE reuse CBSE content seamlessly
+const resolveBoardName = (boardName) => {
+  if (!boardName) return 'CBSE';
+  const upper = String(boardName).trim().toUpperCase();
+  if (upper === 'RBSE') return 'CBSE';
+  return boardName;
+};
+
 // GET /api/curriculum/boards
 export const listBoards = async (req, res) => {
   try {
@@ -22,8 +30,20 @@ export const listBoards = async (req, res) => {
         boards = boards.filter(b => validBoardIds.includes(b._id.toString()));
       }
     }
+
+    // Convert to plain objects and append RBSE if CBSE exists in the list
+    let result = boards.map(b => (b.toObject ? b.toObject() : { ...b }));
+    const cbseBoard = result.find(b => b.name === 'CBSE');
+    if (cbseBoard && !result.some(b => b.name === 'RBSE')) {
+      result.push({
+        _id: 'rbse_virtual_board',
+        name: 'RBSE',
+        createdAt: cbseBoard.createdAt,
+        updatedAt: cbseBoard.updatedAt
+      });
+    }
     
-    return res.json(boards);
+    return res.json(result);
   } catch (err) {
     return res.status(500).json({ message: 'Server Error' });
   }
@@ -33,6 +53,7 @@ export const listBoards = async (req, res) => {
 export const listSubjects = async (req, res) => {
   try {
     const { board = 'CBSE', classTitle, userId } = req.query;
+    const targetBoard = resolveBoardName(board);
     if (userId) {
       const u = await User.findById(userId).select('boardId classId');
       if (u && (u.boardId || u.classId)) {
@@ -43,7 +64,7 @@ export const listSubjects = async (req, res) => {
         return res.json(subjects);
       }
     }
-    const b = await Board.findOne({ name: board });
+    const b = await Board.findOne({ name: targetBoard });
     if (!b) return res.json([]);
     const classFilter = {};
     if (classTitle) {
@@ -62,7 +83,8 @@ export const listSubjects = async (req, res) => {
 export const listClasses = async (req, res) => {
   try {
     const { board = 'CBSE' } = req.query;
-    const b = await Board.findOne({ name: board });
+    const targetBoard = resolveBoardName(board);
+    const b = await Board.findOne({ name: targetBoard });
     if (!b) return res.json([]);
     
     // Cleanup Eduvate Class 7 directly
@@ -415,9 +437,10 @@ export const listChapters = async (req, res) => {
     }
 
     // Find board
-    const b = await Board.findOne({ name: board });
+    const targetBoard = resolveBoardName(board);
+    const b = await Board.findOne({ name: targetBoard });
     if (!b) {
-      console.log(`[Curriculum] Board '${board}' not found`);
+      console.log(`[Curriculum] Board '${board}' (resolved: '${targetBoard}') not found`);
       return res.json([]);
     }
     console.log(`[Curriculum] Found board:`, b.name);

@@ -20,7 +20,11 @@ export const getAllStories = async (req, res) => {
 export const getStory = async (req, res) => {
   try {
     const { boardId, classLevel } = req.params;
-    const story = await InteractiveStory.findOne({ board: boardId, classLevel, isActive: true });
+    const targetBoard = String(boardId || '').trim().toUpperCase() === 'RBSE' ? 'CBSE' : boardId;
+    let story = await InteractiveStory.findOne({ board: targetBoard, classLevel, isActive: true });
+    if (!story && targetBoard !== 'CBSE') {
+      story = await InteractiveStory.findOne({ board: 'CBSE', classLevel, isActive: true });
+    }
     
     if (!story) {
       return res.status(404).json({ error: 'Story not found for this class and board.' });

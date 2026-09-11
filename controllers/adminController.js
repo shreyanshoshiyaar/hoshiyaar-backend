@@ -392,6 +392,8 @@ export const getUsersAnalytics = async (req, res) => {
 
     cachedAnalytics = responseData;
     lastAnalyticsFetchTime = Date.now();
+    cachedSessions = buildAllSessions(rawUsers, moduleMap);
+    lastSessionsFetchTime = Date.now();
 
     res.json(responseData);
   } catch (error) {
@@ -420,3 +422,226 @@ export const updateUserSchool = async (req, res) => {
     res.status(500).json({ message: `Server Error: ${error.message}` });
   }
 };
+
+// Helper to build individual session record
+function buildSessionRecord(user, entries, moduleMap, index) {
+  const startTimestamp = entries[0].timestamp;
+  const endTimestamp = entries[entries.length - 1].timestamp;
+  const durationMinutes = Math.max(2, Math.round((endTimestamp - startTimestamp) / 60000));
+
+  const totalAttempts = entries.length;
+  const correctAttempts = entries.filter(e => e.correct).length;
+  const incorrectAttempts = totalAttempts - correctAttempts;
+  const accuracy = totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0;
+  const pointsEarned = entries.reduce((sum, e) => sum + (e.awarded || 0), 0);
+
+  const uniqueModuleIds = [...new Set(entries.map(e => e.moduleId).filter(Boolean))];
+  const moduleTitles = uniqueModuleIds.map(id => {
+    const key = String(id);
+    if (!moduleMap) return `Module ${key.slice(-4)}`;
+    if (typeof moduleMap.get === 'function') return moduleMap.get(key) || `Module ${key.slice(-4)}`;
+    return moduleMap[key] || `Module ${key.slice(-4)}`;
+  });
+
+  const startDate = new Date(startTimestamp);
+  const istDateStr = startDate.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+  const istStartTimeStr = startDate.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true });
+  const istEndTimeStr = new Date(endTimestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true });
+
+  return {
+    sessionId: `SES_${user._id.toString().slice(-6)}_${startDate.toISOString().slice(0, 10).replace(/-/g, '')}_${index}`,
+    userId: user._id.toString(),
+    username: user.username || 'Anonymous Guest',
+    name: user.name || 'N/A',
+    email: user.email || '',
+    phone: user.phone || '',
+    classLevel: user.classLevel || 'Not Specified',
+    school: user.school || 'Self Study / Individual',
+    platform: user.platform || 'unknown',
+    location: [user.region, user.city].filter(Boolean).join(' - ') || 'N/A',
+    sessionDate: istDateStr,
+    startTime: startDate.toISOString(),
+    endTime: new Date(endTimestamp).toISOString(),
+    startTimeIST: istStartTimeStr,
+    endTimeIST: istEndTimeStr,
+    durationMinutes,
+    totalAttempts,
+    correctAttempts,
+    incorrectAttempts,
+    accuracy,
+    pointsEarned,
+    modulesStudied: moduleTitles.join('; ') || 'N/A'
+  };
+}
+
+let cachedSessions = null;
+let lastSessionsFetchTime = 0;
+const SESSIONS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
+
+// Synchronous helper to cluster user pointsLedger into sessions
+export function buildAllSessions(users, moduleMap = {}) {
+  const maxGap = 15 * 60 * 1000; // 15-minute sliding window
+  const allSessions = [];
+
+  for (const user of users) {
+    if (!user || !user.pointsLedger) continue;
+    const entries = user.pointsLedger instanceof Map
+      ? Array.from(user.pointsLedger.values())
+      : Object.values(user.pointsLedger);
+
+    const validEntries = entries
+      .filter(e => e && (e.attemptedAt || e.earnedAt || e.createdAt))
+      .map(e => {
+        const rawDate = e.attemptedAt || e.earnedAt || e.createdAt;
+        return {
+          ...e,
+          attemptedAt: rawDate,
+          timestamp: new Date(rawDate).getTime()
+        };
+      })
+      .filter(e => !isNaN(e.timestamp))
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    if (validEntries.length === 0) continue;
+
+    let currentSessionEntries = [validEntries[0]];
+
+    for (let i = 1; i < validEntries.length; i++) {
+      const prev = validEntries[i - 1];
+      const curr = validEntries[i];
+
+      if (curr.timestamp - prev.timestamp <= maxGap) {
+        currentSessionEntries.push(curr);
+      } else {
+        allSessions.push(buildSessionRecord(user, currentSessionEntries, moduleMap, allSessions.length + 1));
+        currentSessionEntries = [curr];
+      }
+    }
+    if (currentSessionEntries.length > 0) {
+      allSessions.push(buildSessionRecord(user, currentSessionEntries, moduleMap, allSessions.length + 1));
+    }
+  }
+
+  // Sort latest sessions first
+  allSessions.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+  return allSessions;
+}
+
+// Helper to extract session-wise data from users' pointsLedger
+export const extractSessionsFromUsers = async (options = {}) => {
+  const { limit = 1000, forceRefresh = false } = options;
+  const now = Date.now();
+  if (!forceRefresh && cachedSessions && (now - lastSessionsFetchTime < SESSIONS_CACHE_TTL)) {
+    return cachedSessions;
+  }
+
+  const Module = (await import('../models/Module.js')).default;
+  const modulesData = await Module.find({}, 'title').lean();
+  const moduleMap = {};
+  modulesData.forEach(m => {
+    moduleMap[m._id.toString()] = m.title;
+  });
+
+  const query = { role: { $ne: 'admin' }, totalPoints: { $gt: 0 } };
+  const rawUsers = await User.find(query)
+    .select('username name email phone school classLevel platform region city country pointsLedger')
+    .sort({ _id: -1 })
+    .limit(limit)
+    .lean();
+
+  cachedSessions = buildAllSessions(rawUsers, moduleMap);
+  lastSessionsFetchTime = Date.now();
+  return cachedSessions;
+};
+
+// @desc    Get session-wise analytics
+// @route   GET /api/admin/sessions
+// @access  Private/Admin
+export const getSessionsAnalytics = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 1000;
+    const forceRefresh = req.query.refresh === 'true';
+    const sessions = await extractSessionsFromUsers({ limit, forceRefresh });
+    res.json({
+      success: true,
+      totalSessions: sessions.length,
+      sessions
+    });
+  } catch (error) {
+    console.error('🔥 Error in getSessionsAnalytics:', error);
+    res.status(500).json({ message: `Server Error: ${error.message}` });
+  }
+};
+
+// @desc    Download session-wise data as CSV
+// @route   GET /api/admin/sessions/export-csv
+// @access  Private/Admin
+export const exportSessionsCSV = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 1500;
+    const forceRefresh = req.query.refresh === 'true';
+    const sessions = await extractSessionsFromUsers({ limit, forceRefresh });
+
+    const headers = [
+      'Session ID',
+      'User ID',
+      'Username',
+      'Name',
+      'Phone',
+      'Email',
+      'Class',
+      'School',
+      'Platform',
+      'Location',
+      'Session Date (IST)',
+      'Start Time (IST)',
+      'End Time (IST)',
+      'Duration (mins)',
+      'Questions Attempted',
+      'Questions Correct',
+      'Questions Incorrect',
+      'Accuracy (%)',
+      'Points Earned',
+      'Modules Studied'
+    ];
+
+    const escapeCSV = (val) => {
+      if (val === null || val === undefined) return '""';
+      return `"${String(val).replace(/"/g, '""')}"`;
+    };
+
+    const rows = sessions.map(s => [
+      escapeCSV(s.sessionId),
+      escapeCSV(s.userId),
+      escapeCSV(s.username),
+      escapeCSV(s.name),
+      escapeCSV(s.phone),
+      escapeCSV(s.email),
+      escapeCSV(s.classLevel),
+      escapeCSV(s.school),
+      escapeCSV(s.platform),
+      escapeCSV(s.location),
+      escapeCSV(s.sessionDate),
+      escapeCSV(s.startTimeIST),
+      escapeCSV(s.endTimeIST),
+      s.durationMinutes,
+      s.totalAttempts,
+      s.correctAttempts,
+      s.incorrectAttempts,
+      s.accuracy,
+      s.pointsEarned,
+      escapeCSV(s.modulesStudied)
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+    const filename = `hoshiyaar_normal_sessions_${new Date().toISOString().split('T')[0]}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(csvContent);
+  } catch (error) {
+    console.error('🔥 Error in exportSessionsCSV:', error);
+    res.status(500).json({ message: `Server Error: ${error.message}` });
+  }
+};
+

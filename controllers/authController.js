@@ -15,6 +15,46 @@ const generateToken = (id, role) => {
   });
 };
 
+// Helper function to get start of current week's Monday in Indian Standard Time (IST) 00:00:00.000
+export const getCurrentMondayIST = (date = new Date()) => {
+  const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+  const istTime = new Date(date.getTime() + IST_OFFSET);
+  const day = istTime.getUTCDay(); // 0 is Sunday, 1 is Monday...
+  const daysToSubtract = day === 0 ? 6 : day - 1;
+  
+  const mondayIST = new Date(istTime.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+  mondayIST.setUTCHours(0, 0, 0, 0);
+  return new Date(mondayIST.getTime() - IST_OFFSET);
+};
+
+// Helper to ensure a user's weekly goal is reset if a new Monday has started
+export const ensureWeeklyGoalReset = (user) => {
+  if (!user) return false;
+  const currentMonday = getCurrentMondayIST();
+  let modified = false;
+
+  if (!user.weeklyGoal) {
+    user.weeklyGoal = {
+      modulesCompleted: 0,
+      lastReset: currentMonday,
+      claimed: false
+    };
+    if (typeof user.markModified === 'function') user.markModified('weeklyGoal');
+    return true;
+  }
+
+  const lastReset = user.weeklyGoal.lastReset ? new Date(user.weeklyGoal.lastReset) : new Date(0);
+  if (lastReset < currentMonday) {
+    user.weeklyGoal.modulesCompleted = 0;
+    user.weeklyGoal.claimed = false;
+    user.weeklyGoal.lastReset = currentMonday;
+    if (typeof user.markModified === 'function') user.markModified('weeklyGoal');
+    modified = true;
+  }
+
+  return modified;
+};
+
 // @desc    Update funnel stage
 // @route   PATCH /api/auth/funnel-stage
 // @access  Public
@@ -37,6 +77,12 @@ export const claimWeeklyGoal = async (req, res) => {
   try {
     const user = await User.findById(req.params.userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Check if challenge has reset for the new week
+    if (ensureWeeklyGoalReset(user)) {
+      await user.save();
+      return res.status(400).json({ message: 'A new week has started. Your challenges have reset for Monday!' });
+    }
 
     if (!user.weeklyGoal || user.weeklyGoal.modulesCompleted < 3) {
       return res.status(400).json({ message: 'Goal not reached yet' });
@@ -516,6 +562,10 @@ export const loginUser = async (req, res) => {
         ['Host', 'hostcbse', 'AKSHITRAVULA', 'AKSHIT', 'SB10', 'Nidhi sekhri'].includes(user.username);
       if (isSuperAdmin && user.role !== 'admin') {
         user.role = 'admin';
+      }
+
+      // Automatically reset weekly challenge if Monday has passed
+      if (ensureWeeklyGoalReset(user) || isSuperAdmin) {
         await user.save({ validateBeforeSave: false });
       }
 
@@ -537,7 +587,7 @@ export const loginUser = async (req, res) => {
         platform: user.platform,
         streak: user.currentStreak,
         lastStreakDate: user.lastStreakDate,
-        weeklyGoal: user.weeklyGoal || { modulesCompleted: 0, lastReset: new Date(), claimed: false },
+        weeklyGoal: user.weeklyGoal,
         token: generateToken(user._id, isSuperAdmin ? 'admin' : user.role),
       });
     } else {
@@ -559,6 +609,12 @@ export const getUser = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
+
+    // Automatically reset weekly challenge if Monday has passed
+    if (ensureWeeklyGoalReset(user)) {
+      await user.save({ validateBeforeSave: false });
+    }
+
     const cleanPhone = String(user.phone || '').replace(/\D/g, '');
     const isSuperAdmin = ['9867735936', '7021970672', '9820277252'].some(p => cleanPhone.endsWith(p)) ||
       ['Host', 'hostcbse', 'AKSHITRAVULA', 'AKSHIT', 'SB10', 'Nidhi sekhri'].includes(user.username);
@@ -584,7 +640,7 @@ export const getUser = async (req, res) => {
       lastStreakDate: user.lastStreakDate,
       role: isSuperAdmin ? 'admin' : (user.role || 'user'),
       platform: user.platform,
-      weeklyGoal: user.weeklyGoal || { modulesCompleted: 0, lastReset: new Date(), claimed: false },
+      weeklyGoal: user.weeklyGoal,
     });
   } catch (error) {
     res.status(500).json({ message: `Server Error: ${error.message}` });
@@ -890,30 +946,12 @@ export const updateProgress = async (req, res) => {
       user.chaptersProgress.push(newProgress);
     }
     
+    // Ensure weekly challenge is reset if Monday has passed
+    ensureWeeklyGoalReset(user);
+
     // Process weekly goal update
     if (isNewlyCompleted) {
-      if (!user.weeklyGoal) {
-        user.weeklyGoal = { modulesCompleted: 0, lastReset: new Date(), claimed: false };
-      }
-      
-      const now = new Date();
-      // Calculate start of the most recent Monday in IST (UTC+5:30)
-      const istTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-      const day = istTime.getDay() || 7; // Sunday is 7
-      let daysToSubtract = day - 1;
-      const recentMondayIST = new Date(istTime.getFullYear(), istTime.getMonth(), istTime.getDate() - daysToSubtract, 0, 0, 0);
-      
-      const lastResetIST = new Date(new Date(user.weeklyGoal.lastReset).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-      
-      if (lastResetIST < recentMondayIST) {
-        // It's a new week
-        user.weeklyGoal.modulesCompleted = 1;
-        user.weeklyGoal.claimed = false;
-        user.weeklyGoal.lastReset = now;
-      } else {
-        // Same week
-        user.weeklyGoal.modulesCompleted += 1;
-      }
+      user.weeklyGoal.modulesCompleted = (user.weeklyGoal.modulesCompleted || 0) + 1;
       user.markModified('weeklyGoal');
     }
 

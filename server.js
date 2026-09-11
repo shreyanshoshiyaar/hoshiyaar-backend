@@ -18,7 +18,7 @@ import sitemapRoutes from './routes/sitemap.js';
 import Subject from './models/Subject.js';
 import ClassLevel from './models/ClassLevel.js';
 import User from './models/User.js';
-import { initFirebase, startInactivityCron, startDailyMassNotificationCron, startStreakRiskNotificationCron, startLeaderboardRankCheckCron, startChapterSpecificNotificationCron } from './services/notificationService.js';
+import { initFirebase, startInactivityCron, startDailyMassNotificationCron, startStreakRiskNotificationCron, startLeaderboardRankCheckCron, startChapterSpecificNotificationCron, startWeeklyGoalResetCron, syncOutdatedWeeklyGoals } from './services/notificationService.js';
 import { startWhatsappNudgeCron } from './services/whatsappNudgeCron.js';
 
 // Load environment variables from .env file
@@ -34,7 +34,10 @@ if (process.env.CLOUDINARY_CLOUD_NAME) {
 }
 
 // Connect to the database
-connectDB();
+connectDB().then(() => {
+  // Sync any outdated weekly challenge records on startup
+  syncOutdatedWeeklyGoals();
+});
 
 // Initialize Firebase Admin for Push Notifications
 initFirebase();
@@ -56,6 +59,9 @@ startChapterSpecificNotificationCron();
 
 // Start the Every 30 mins Leaderboard Rank Check Cron Job
 startLeaderboardRankCheckCron();
+
+// Start the Weekly Challenge Reset Cron Job (Every Monday 00:00 IST)
+startWeeklyGoalResetCron();
 
 const app = express();
 

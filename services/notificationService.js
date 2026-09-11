@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import SystemSettings from '../models/SystemSettings.js';
 import ClassLevel from '../models/ClassLevel.js';
 import cron from 'node-cron';
+import { getCurrentMondayIST } from '../controllers/authController.js';
 import { readFileSync } from 'fs';
 import path from 'path';
 
@@ -731,5 +732,66 @@ export const startChapterSpecificNotificationCron = () => {
   });
 
   console.log('🚀 Chapter Specific Notification Crons Scheduled (Daily 7:00 PM & 8:00 PM IST for 7 Days)');
+};
+
+// Cron Job: Automatically reset weekly challenges in the database every Monday at 00:00 IST
+export const startWeeklyGoalResetCron = () => {
+  cron.schedule('0 0 * * 1', async () => {
+    console.log('⏰ Running Weekly Challenge Reset Cron (Monday 00:00 IST)...');
+    try {
+      const currentMonday = getCurrentMondayIST();
+      const result = await User.updateMany(
+        {
+          $or: [
+            { "weeklyGoal.lastReset": { $lt: currentMonday } },
+            { "weeklyGoal.lastReset": { $exists: false } },
+            { "weeklyGoal": { $exists: false } }
+          ]
+        },
+        {
+          $set: {
+            "weeklyGoal.modulesCompleted": 0,
+            "weeklyGoal.claimed": false,
+            "weeklyGoal.lastReset": currentMonday
+          }
+        }
+      );
+      console.log(`✅ Weekly Challenge Reset completed. Reset ${result.modifiedCount} users for week starting ${currentMonday.toISOString()}`);
+    } catch (err) {
+      console.error('Error in Weekly Challenge Reset Cron:', err);
+    }
+  }, {
+    timezone: 'Asia/Kolkata'
+  });
+
+  console.log('🚀 Weekly Challenge Reset Cron Scheduled (Every Monday 00:00 IST)');
+};
+
+// Sync outdated weekly challenges immediately on server startup
+export const syncOutdatedWeeklyGoals = async () => {
+  try {
+    const currentMonday = getCurrentMondayIST();
+    const result = await User.updateMany(
+      {
+        $or: [
+          { "weeklyGoal.lastReset": { $lt: currentMonday } },
+          { "weeklyGoal.lastReset": { $exists: false } },
+          { "weeklyGoal": { $exists: false } }
+        ]
+      },
+      {
+        $set: {
+          "weeklyGoal.modulesCompleted": 0,
+          "weeklyGoal.claimed": false,
+          "weeklyGoal.lastReset": currentMonday
+        }
+      }
+    );
+    if (result.modifiedCount > 0) {
+      console.log(`✅ Startup Sync: Auto-reset ${result.modifiedCount} outdated weekly challenge records for week starting ${currentMonday.toISOString()}`);
+    }
+  } catch (err) {
+    console.error('Error syncing outdated weekly challenges on startup:', err.message);
+  }
 };
 

@@ -202,26 +202,29 @@ export const getUsersAnalytics = async (req, res) => {
     
     const avgUseTime = totalUsers > 0 ? Math.round(users.reduce((acc, u) => acc + u.useTime, 0) / totalUsers) : 0;
 
-    // WhatsApp Nudges Aggregation
+    // WhatsApp Nudges & Module Engagement Aggregation
     let whatsappStats = {
       nudge_0_min: 0,
       nudge_0_min_converted: 0,
-      nudge_mission_incomplete: 0,
-      nudge_streak_break: 0,
-      nudge_3_days_inactive: 0,
     };
+    let noModuleStartedCount = 0;
 
     users.forEach(u => {
-      if (u.whatsappNudges) {
-        if (u.whatsappNudges.noModule30mSent) {
-          whatsappStats.nudge_0_min++;
-          if (u.chaptersProgress && u.chaptersProgress.length > 0) {
-            whatsappStats.nudge_0_min_converted++;
-          }
+      // User has not started any module (no chapters progress and no quiz attempts/useTime)
+      const hasChaptersProgress = u.chaptersProgress && u.chaptersProgress.length > 0;
+      const hasCompletedModules = (u.completedModulesCount || 0) > 0;
+      const hasUseTime = (u.useTime || 0) > 0;
+      const hasPoints = (u.totalPoints || 0) > 0;
+
+      if (!hasChaptersProgress && !hasCompletedModules && !hasUseTime && !hasPoints) {
+        noModuleStartedCount++;
+      }
+
+      if (u.whatsappNudges && u.whatsappNudges.noModule30mSent) {
+        whatsappStats.nudge_0_min++;
+        if (hasChaptersProgress || hasCompletedModules || hasPoints) {
+          whatsappStats.nudge_0_min_converted++;
         }
-        if (u.whatsappNudges.startedNotCompleted2hSent) whatsappStats.nudge_mission_incomplete++;
-        if (u.whatsappNudges.inactive24hSent) whatsappStats.nudge_streak_break++;
-        if (u.whatsappNudges.inactive3DaysSent) whatsappStats.nudge_3_days_inactive++;
       }
     });
 
@@ -233,6 +236,7 @@ export const getUsersAnalytics = async (req, res) => {
       onboardingRate,
       avgAccuracy,
       avgUseTime,
+      noModuleStartedCount,
       whatsappStats,
     };
 

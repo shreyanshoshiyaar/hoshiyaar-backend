@@ -11,7 +11,7 @@ const generateToken = (id, role) => {
 // Cache for analytics to avoid repeated 50MB queries and timeouts
 let cachedAnalytics = null;
 let lastAnalyticsFetchTime = 0;
-const ANALYTICS_CACHE_TTL = 60 * 1000; // 60 seconds
+const ANALYTICS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
 
 // @desc    Auth admin & get token
 // @route   POST /api/admin/login
@@ -396,10 +396,17 @@ export const getUsersAnalytics = async (req, res) => {
 
     cachedAnalytics = responseData;
     lastAnalyticsFetchTime = Date.now();
-    cachedSessions = buildAllSessions(rawUsers, moduleMap);
-    lastSessionsFetchTime = Date.now();
 
+    // Immediately respond to user so the dashboard loads instantly!
     res.json(responseData);
+
+    // Build session records asynchronously in background for subsequent CSV exports
+    try {
+      cachedSessions = buildAllSessions(rawUsers, moduleMap);
+      lastSessionsFetchTime = Date.now();
+    } catch (sessionErr) {
+      console.warn('Background session clustering warning:', sessionErr.message);
+    }
   } catch (error) {
     console.error('🔥 Error in getUsersAnalytics:', error);
     res.status(500).json({ message: `Server Error: ${error.message}` });

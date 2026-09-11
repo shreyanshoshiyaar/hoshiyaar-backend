@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import AiExamSession from '../models/AiExamSession.js';
 import SystemSettings from '../models/SystemSettings.js';
 import User from '../models/User.js';
@@ -360,3 +361,70 @@ export const getUserExamHistory = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+// Student: Directly save or sync completed exam session to database
+export const saveExamSession = async (req, res) => {
+  try {
+    const {
+      userId,
+      chapterId,
+      chapterTitle,
+      subject,
+      finalScore,
+      timeSpentSeconds = 0,
+      questions = []
+    } = req.body;
+
+    if (!chapterId) {
+      return res.status(400).json({ error: 'chapterId is required.' });
+    }
+
+    let userInfo = {};
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      const u = await User.findById(userId).select('name username phone school');
+      if (u) {
+        userInfo = {
+          name: u.name || '',
+          username: u.username || '',
+          phone: u.phone || '',
+          school: u.school || ''
+        };
+      }
+    }
+
+    const currentWeekStart = getWeekMonday();
+    let attemptNumber = 1;
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      const prevCount = await AiExamSession.countDocuments({
+        userId,
+        chapterId: String(chapterId),
+        weekStart: currentWeekStart
+      });
+      attemptNumber = prevCount + 1;
+    }
+
+    const session = await AiExamSession.create({
+      userId: (userId && mongoose.Types.ObjectId.isValid(userId)) ? userId : null,
+      userInfo,
+      chapterId: String(chapterId),
+      chapterTitle: chapterTitle || '',
+      subject: subject || 'Science',
+      weekStart: currentWeekStart,
+      attemptNumber,
+      questions,
+      finalScore: Number(finalScore !== undefined ? finalScore : 0),
+      timeSpentSeconds: Number(timeSpentSeconds || 0),
+      aiCreditsUsed: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      status: 'completed'
+    });
+
+    return res.json({ success: true, session });
+  } catch (error) {
+    console.error('Error saving exam session to database:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+

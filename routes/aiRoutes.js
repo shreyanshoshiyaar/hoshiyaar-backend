@@ -5,7 +5,8 @@ import {
   getAiAnalytics, 
   updateExamAttemptConfig,
   getLatestExamSession,
-  getUserExamHistory 
+  getUserExamHistory,
+  saveExamSession
 } from '../controllers/aiAnalyticsController.js';
 
 const router = express.Router();
@@ -22,5 +23,6 @@ router.post('/config', updateExamAttemptConfig);
 // Student Exam Review & History
 router.get('/latest-session', getLatestExamSession);
 router.get('/history', getUserExamHistory);
+router.post('/save-session', saveExamSession);
 
 export default router;

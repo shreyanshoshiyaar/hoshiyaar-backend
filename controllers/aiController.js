@@ -222,14 +222,24 @@ export const evaluateBatchAnswers = async (req, res) => {
       return res.status(500).json({ error: 'AI API Key is not configured.' });
     }
 
-    let promptContext = items.map((item) => `
+    // Separate answered items from unattempted items to conserve AI tokens & credits
+    const answeredItems = items.filter(item => {
+      const a = item.userAnswer ? String(item.userAnswer).trim() : '';
+      return a && a.toLowerCase() !== 'no answer submitted';
+    });
+
+    let parsedResult = [];
+    let usage = {};
+
+    if (answeredItems.length > 0) {
+      let promptContext = answeredItems.map((item) => `
 Item ID: ${item.id}
 Question: "${item.question}"
 Student's Answer: "${item.userAnswer}"
 ${item.expectedAnswer ? `Expected Idea / Model Answer: "${item.expectedAnswer}"` : ''}
 ---`).join('\n');
 
-    const prompt = `You are an expert, encouraging teacher evaluating answers from a student in a school exam.
+      const prompt = `You are an expert, encouraging teacher evaluating answers from a student in a school exam.
 ${subjectKnowledge ? `Context / Subject Knowledge: "${subjectKnowledge}"` : ''}
 Below are questions along with the student's answers and model answers.
 
@@ -257,77 +267,79 @@ Scoring Guidelines:
   * 0: Completely incorrect, irrelevant, or blank.
 Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >= 70, false otherwise. Never leave 'missing', 'wrong', or 'grammar' as null or empty.`;
 
-    const candidateModels = [
-      'gemini-3.6-flash',
-      'gemini-3.5-flash',
-      'gemini-3.7-flash',
-      'gemini-3.1-flash-lite',
-      'gemini-3.5-flash-lite',
-      'gemini-flash-lite-latest'
-    ];
+      const candidateModels = [
+        'gemini-3.6-flash',
+        'gemini-3.5-flash',
+        'gemini-3.7-flash',
+        'gemini-3.1-flash-lite',
+        'gemini-3.5-flash-lite',
+        'gemini-flash-lite-latest'
+      ];
 
-    let response;
-    let lastError = null;
+      let response;
+      let lastError = null;
 
-    for (const modelName of candidateModels) {
-      let retries = 2;
-      while (retries > 0) {
-        try {
-          response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${API_KEY}`,
-            {
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { response_mime_type: "application/json", temperature: 0.2, maxOutputTokens: 4096 }
-            },
-            { headers: { 'Content-Type': 'application/json' }, timeout: 45000 }
-          );
-          if (response?.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-            break;
-          }
-        } catch (err) {
-          lastError = err;
-          console.warn(`[AI Eval] Model ${modelName} failed with status ${err.response?.status || err.message}, retrying...`);
-          retries--;
-          if (retries > 0) {
-            await new Promise(res => setTimeout(res, 1000));
-          }
-        }
-      }
-      if (response?.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        break;
-      }
-    }
-
-    if (!response && lastError) {
-      console.error('[AI Eval] All candidate models failed, creating heuristic evaluation fallback...');
-    }
-
-    const textOutput = response?.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    const usage = response?.data?.usageMetadata || {};
-
-    let parsedResult = [];
-    if (textOutput) {
-      try {
-        parsedResult = JSON.parse(textOutput);
-      } catch (e) {
-        let jsonString = textOutput.trim();
-        const start = jsonString.indexOf('[');
-        let end = jsonString.lastIndexOf(']');
-        if (start !== -1 && end === -1) {
-          jsonString = jsonString + '\n]';
-          end = jsonString.lastIndexOf(']');
-        }
-        if (start !== -1 && end !== -1) {
-          jsonString = jsonString.substring(start, end + 1);
+      for (const modelName of candidateModels) {
+        let retries = 2;
+        while (retries > 0) {
           try {
-            parsedResult = JSON.parse(jsonString);
-          } catch (innerErr) {
-            console.warn('Fallback JSON parsing failed, checking individual objects...');
+            response = await axios.post(
+              `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${API_KEY}`,
+              {
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { response_mime_type: "application/json", temperature: 0.2, maxOutputTokens: 4096 }
+              },
+              { headers: { 'Content-Type': 'application/json' }, timeout: 45000 }
+            );
+            if (response?.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+              break;
+            }
+          } catch (err) {
+            lastError = err;
+            console.warn(`[AI Eval] Model ${modelName} failed with status ${err.response?.status || err.message}, retrying...`);
+            retries--;
+            if (retries > 0) {
+              await new Promise(res => setTimeout(res, 1000));
+            }
           }
         }
+        if (response?.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+          break;
+        }
+      }
+
+      if (!response && lastError) {
+        console.error('[AI Eval] All candidate models failed, creating heuristic evaluation fallback...');
+      }
+
+      const textOutput = response?.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      usage = response?.data?.usageMetadata || {};
+
+      if (textOutput) {
+        try {
+          parsedResult = JSON.parse(textOutput);
+        } catch (e) {
+          let jsonString = textOutput.trim();
+          const start = jsonString.indexOf('[');
+          let end = jsonString.lastIndexOf(']');
+          if (start !== -1 && end === -1) {
+            jsonString = jsonString + '\n]';
+            end = jsonString.lastIndexOf(']');
+          }
+          if (start !== -1 && end !== -1) {
+            jsonString = jsonString.substring(start, end + 1);
+            try {
+              parsedResult = JSON.parse(jsonString);
+            } catch (innerErr) {
+              console.warn('Fallback JSON parsing failed, checking individual objects...');
+            }
+          }
+        }
+      } else {
+        console.warn('[AI Eval] No textOutput received from AI API, generating fallback evaluation.');
       }
     } else {
-      console.warn('[AI Eval] No textOutput received from AI API, generating fallback evaluation.');
+      console.log('[AI Eval] No answered items in batch - skipping Gemini API call to conserve credits.');
     }
 
     if (!Array.isArray(parsedResult)) {
@@ -388,8 +400,8 @@ Note: 'score' must be an integer (0 to 100). Set 'isCorrect' to true if score >=
       const promptTokens = Number(usage.promptTokenCount || 0);
       const completionTokens = Number(usage.candidatesTokenCount || 0);
       const totalTokens = Number(usage.totalTokenCount || (promptTokens + completionTokens));
-      // 1 credit per question evaluated or minimum 1
-      const aiCreditsUsed = Math.max(1, items.length);
+      // 1 credit per batch evaluation, or 0 if unattempted
+      const aiCreditsUsed = answeredItems.length > 0 ? 1 : 0;
 
       let userInfo = {};
       if (userId && mongoose.Types.ObjectId.isValid(userId)) {

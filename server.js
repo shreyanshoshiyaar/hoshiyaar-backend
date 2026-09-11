@@ -13,6 +13,7 @@ import pointsRoutes from './routes/points.js';
 import blogRoutes from './routes/blog.js';
 import settingsRoutes from './routes/settings.js';
 import adminRoutes from './routes/adminRoutes.js';
+import trackRoutes from './routes/trackRoutes.js';
 import whatsappRoutes from './routes/whatsappRoutes.js';
 import sitemapRoutes from './routes/sitemap.js';
 import Subject from './models/Subject.js';
@@ -194,6 +195,9 @@ app.use('/api/blogs', blogRoutes);
 // Settings routes
 app.use('/api/settings', settingsRoutes);
 app.use('/api/admin', adminRoutes);
+
+// Notification click tracking (no auth required)
+app.use('/api/track', trackRoutes);
 
 // Interactive Story routes
 import interactiveStoryRoutes from './routes/interactiveStory.js';

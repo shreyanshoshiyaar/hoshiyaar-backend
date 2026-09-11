@@ -1,5 +1,6 @@
 import User from '../models/User.js';
 import Module from '../models/Module.js';
+import NotificationClick from '../models/NotificationClick.js';
 import jwt from 'jsonwebtoken';
 
 const generateToken = (id, role) => {
@@ -655,4 +656,82 @@ export const exportSessionsCSV = async (req, res) => {
     res.status(500).json({ message: `Server Error: ${error.message}` });
   }
 };
+
+// @desc    Get notification click analytics (day-wise, by type)
+// @route   GET /api/admin/notification-analytics
+// @access  Private/Admin
+export const getNotificationAnalytics = async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+
+    // Build IST date string helper
+    const toISTDateStr = (date) => {
+      const d = new Date(date);
+      d.setUTCHours(d.getUTCHours() + 5);
+      d.setUTCMinutes(d.getUTCMinutes() + 30);
+      return d.toISOString().split('T')[0];
+    };
+
+    // Last N days
+    const since = new Date();
+    since.setDate(since.getDate() - (days - 1));
+    since.setHours(0, 0, 0, 0);
+
+    const clicks = await NotificationClick.find({ clickedAt: { $gte: since } })
+      .select('type clickedAt')
+      .lean();
+
+    const TYPES = ['daily_mass', 'inactivity_nudge', 'streak_risk', 'rank_drop', 'chapter_promo', 'manual_nudge', 'unknown'];
+
+    // Build empty day map for last N days
+    const dayMap = {};
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = toISTDateStr(d);
+      const entry = { date: dateStr, total: 0 };
+      TYPES.forEach(t => { entry[t] = 0; });
+      dayMap[dateStr] = entry;
+    }
+
+    // Aggregate clicks by day and type
+    clicks.forEach(click => {
+      const dateStr = toISTDateStr(click.clickedAt);
+      if (dayMap[dateStr]) {
+        dayMap[dateStr].total += 1;
+        const t = TYPES.includes(click.type) ? click.type : 'unknown';
+        dayMap[dateStr][t] = (dayMap[dateStr][t] || 0) + 1;
+      }
+    });
+
+    const timeline = Object.values(dayMap);
+
+    // Summary stats
+    const totalClicks = clicks.length;
+    const typeBreakdown = {};
+    TYPES.forEach(t => { typeBreakdown[t] = 0; });
+    clicks.forEach(c => {
+      const t = TYPES.includes(c.type) ? c.type : 'unknown';
+      typeBreakdown[t] += 1;
+    });
+
+    // Last 7 days total
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const last7Total = clicks.filter(c => new Date(c.clickedAt) >= sevenDaysAgo).length;
+
+    res.json({
+      success: true,
+      totalClicks,
+      last7Total,
+      typeBreakdown,
+      timeline,
+      types: TYPES,
+    });
+  } catch (error) {
+    console.error('🔥 Error in getNotificationAnalytics:', error);
+    res.status(500).json({ message: `Server Error: ${error.message}` });
+  }
+};
+
 

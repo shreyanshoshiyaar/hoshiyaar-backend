@@ -184,7 +184,7 @@ export const startDailyMassNotificationCron = () => {
             title: selectedMessage.title, 
             body: selectedMessage.body + streakText 
           },
-          data: { url: ACTION_URL },
+          data: { url: ACTION_URL, type: 'daily_mass' },
           token: user.fcmToken,
           android: {
             priority: 'high',
@@ -289,7 +289,7 @@ export const startStreakRiskNotificationCron = () => {
             title: "⚠️ Streak at Risk!", 
             body: `Agent ${user.name || ''}, your ${user.currentStreak}-day streak is about to break! Open the app now and complete a module to save it.` 
           },
-          data: { url: "/learn" },
+          data: { url: "/learn", type: "streak_risk" },
           token: user.fcmToken,
           android: {
             priority: 'high',
@@ -374,7 +374,7 @@ export const startLeaderboardRankCheckCron = () => {
                 title: "🚨 You lost your rank!", 
                 body: `Oh no! Someone just passed you. You dropped to Rank #${currentRank}. Complete a module to reclaim your spot!` 
               },
-              data: { url: "/learn" },
+              data: { url: "/learn", type: "rank_drop" },
               token: user.fcmToken,
               android: {
                 priority: 'high',

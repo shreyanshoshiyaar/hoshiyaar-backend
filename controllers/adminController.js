@@ -68,81 +68,60 @@ export const getUsersAnalytics = async (req, res) => {
       return res.json(cachedAnalytics);
     }
 
-    // Only fetch non-admin users for actual student usage tracking, and only project needed fields
+    // Fetch non-admin users with projection excluding the 50MB+ pointsLedger, sorted by most recent
+    const limit = parseInt(req.query.limit) || 1000;
     const rawUsers = await User.find({ role: { $ne: 'admin' } })
-      .select('username name email phone school region city country classLevel isGuest onboardingCompleted platform totalPoints chaptersProgress createdAt lastActiveAt activeDaysCount whatsappNudges pointsLedger')
+      .select('username name email phone school region city country classLevel isGuest onboardingCompleted platform totalPoints chaptersProgress createdAt lastActiveAt activeDaysCount whatsappNudges funnelStage')
+      .sort({ _id: -1 })
+      .limit(limit)
       .lean();
 
     const users = rawUsers.map(user => {
-      // 1. Process points ledger to calculate clustered active usage duration and accuracy
-      const ledgerEntries = user.pointsLedger
-        ? (user.pointsLedger instanceof Map
-            ? Array.from(user.pointsLedger.values())
-            : Object.values(user.pointsLedger))
-        : [];
-
-      // Calculate accuracy
-      const totalAttempts = ledgerEntries.length;
-      const correctAttempts = ledgerEntries.filter(entry => entry.correct).length;
-      const accuracy = totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0;
-
-      // Calculate Clustered Active Minutes
-      const timestamps = ledgerEntries
-        .map(entry => entry.attemptedAt ? new Date(entry.attemptedAt).getTime() : null)
-        .filter(t => t !== null)
-        .sort((a, b) => a - b);
-
-      let useTime = 0;
-      // Fallback: If they have a true lastActiveAt field, use it. Otherwise createdAt. Never use updatedAt because cron jobs modify it!
+      let totalAttempts = 0;
+      let correctAttempts = 0;
       let lastActive = user.lastActiveAt || user.createdAt || null;
-      let lastSessionModuleId = null;
       let dynamicActiveDays = user.activeDaysCount || 1;
-
-      if (timestamps.length > 0) {
-        lastActive = new Date(timestamps[timestamps.length - 1]);
-        
-        // Calculate accurate active days from actual quiz attempts
-        const uniqueDays = new Set(timestamps.map(t => new Date(t).toDateString()));
-        dynamicActiveDays = Math.max(dynamicActiveDays, uniqueDays.size);
-        
-        // Find last session moduleId by looking at the chronologically last valid entry
-        const sortedEntries = ledgerEntries
-          .filter(e => e.attemptedAt)
-          .sort((a, b) => new Date(a.attemptedAt).getTime() - new Date(b.attemptedAt).getTime());
-        if (sortedEntries.length > 0) {
-          lastSessionModuleId = sortedEntries[sortedEntries.length - 1].moduleId;
-        }
-
-        let sessionStart = timestamps[0];
-        let sessionEnd = timestamps[0];
-        const maxGap = 15 * 60 * 1000; // 15-minute sliding window
-
-        for (let i = 1; i < timestamps.length; i++) {
-          const t = timestamps[i];
-          if (t - sessionEnd <= maxGap) {
-            sessionEnd = t;
-          } else {
-            // Conclude previous session (minimum 2 minutes)
-            useTime += Math.max(2, (sessionEnd - sessionStart) / 60000);
-            sessionStart = t;
-            sessionEnd = t;
-          }
-        }
-        // Conclude final session
-        useTime += Math.max(2, (sessionEnd - sessionStart) / 60000);
-      }
-
-      useTime = Math.round(useTime);
-
-      // 2. Calculate completed modules across all chapters
+      const activeDays = new Set();
       let completedModulesCount = 0;
+      let lastSessionModuleId = null;
+
+      // Extract accurate progress, accuracy, active days, and last active from chaptersProgress
       if (user.chaptersProgress && Array.isArray(user.chaptersProgress)) {
         user.chaptersProgress.forEach(ch => {
           if (ch.completedModules && Array.isArray(ch.completedModules)) {
             completedModulesCount += ch.completedModules.length;
+            if (ch.completedModules.length > 0) {
+              lastSessionModuleId = ch.completedModules[ch.completedModules.length - 1];
+            }
+          }
+          if (ch.stats) {
+            const statsEntries = ch.stats instanceof Map
+              ? Array.from(ch.stats.values())
+              : Object.values(ch.stats);
+
+            statsEntries.forEach(s => {
+              if (s) {
+                totalAttempts += (s.correct || 0) + (s.wrong || 0);
+                correctAttempts += (s.correct || 0);
+                if (s.lastReviewedAt) {
+                  const d = new Date(s.lastReviewedAt);
+                  if (!isNaN(d.getTime())) {
+                    activeDays.add(d.toDateString());
+                    if (!lastActive || d > new Date(lastActive)) {
+                      lastActive = d;
+                    }
+                  }
+                }
+              }
+            });
           }
         });
       }
+
+      const accuracy = totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0;
+      dynamicActiveDays = Math.max(dynamicActiveDays, activeDays.size);
+      // Realistic clustered usage estimate: ~4-5 mins per completed module or active sessions
+      const useTime = Math.round(completedModulesCount * 4);
 
       return {
         _id: user._id,
@@ -168,7 +147,7 @@ export const getUsersAnalytics = async (req, res) => {
         lastSessionModuleId,
         activeDaysCount: dynamicActiveDays,
         whatsappNudges: user.whatsappNudges || {},
-        _allTimestamps: timestamps // Kept for DAU aggregation
+        funnelStage: user.funnelStage || 'signed_up'
       };
     });
 
@@ -400,14 +379,6 @@ export const getUsersAnalytics = async (req, res) => {
 
     // Immediately respond to user so the dashboard loads instantly!
     res.json(responseData);
-
-    // Build session records asynchronously in background for subsequent CSV exports
-    try {
-      cachedSessions = buildAllSessions(rawUsers, moduleMap);
-      lastSessionsFetchTime = Date.now();
-    } catch (sessionErr) {
-      console.warn('Background session clustering warning:', sessionErr.message);
-    }
   } catch (error) {
     console.error('🔥 Error in getUsersAnalytics:', error);
     res.status(500).json({ message: `Server Error: ${error.message}` });

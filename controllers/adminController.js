@@ -73,7 +73,8 @@ export const getUsersAnalytics = async (req, res) => {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     thirtyDaysAgo.setHours(0, 0, 0, 0);
 
-    const limit = req.query.all === 'true' || req.query.limit === 'all' ? 0 : (parseInt(req.query.limit) || 1000);
+    // Default to fetching all users (limit = 0 means no limit in Mongoose) unless an explicit limit query param is provided
+    const limit = (req.query.limit && req.query.limit !== 'all') ? parseInt(req.query.limit) : 0;
 
     const [
       totalUsersCount,

@@ -248,7 +248,7 @@ app.use((err, req, res, next) => {
 // ============================================
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log('='.repeat(50));
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
@@ -256,6 +256,11 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🔗 Backend accessible from mobile: http://192.168.1.11:${PORT}`);
   console.log('='.repeat(50));
 });
+
+// Configure 5-minute socket timeout for large analytical and CSV export queries
+server.timeout = 300000;
+server.keepAliveTimeout = 305000;
+server.headersTimeout = 310000;
 
 // One-time index migration
 (async () => {

@@ -515,11 +515,73 @@ function buildSessionRecord(user, entries, moduleMap, index) {
   };
 }
 
-// @desc    Download ALL users data as CSV
+// Helper to compute start & end Date for a given period string (in IST timezone)
+export const getPeriodDateRange = (period, customStart, customEnd) => {
+  if (!period || period === 'all') return null;
+
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const nowIST = new Date(now.getTime() + istOffset);
+
+  let start = null;
+  let end = new Date();
+
+  if (period === 'today') {
+    const d = new Date(nowIST);
+    d.setUTCHours(0, 0, 0, 0);
+    start = new Date(d.getTime() - istOffset);
+  } else if (period === 'yesterday') {
+    const dStart = new Date(nowIST);
+    dStart.setUTCDate(dStart.getUTCDate() - 1);
+    dStart.setUTCHours(0, 0, 0, 0);
+    start = new Date(dStart.getTime() - istOffset);
+
+    const dEnd = new Date(nowIST);
+    dEnd.setUTCHours(0, 0, 0, 0);
+    end = new Date(dEnd.getTime() - istOffset);
+  } else if (period === '7d' || period === 'last_7_days') {
+    start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  } else if (period === '30d' || period === 'last_30_days') {
+    start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  } else if (period === '90d' || period === 'last_90_days') {
+    start = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  } else if (period === 'custom') {
+    if (customStart) {
+      const s = new Date(`${customStart}T00:00:00+05:30`);
+      if (!isNaN(s.getTime())) start = s;
+    }
+    if (customEnd) {
+      const e = new Date(`${customEnd}T23:59:59+05:30`);
+      if (!isNaN(e.getTime())) end = e;
+    }
+  }
+
+  return start ? { start, end } : null;
+};
+
+// @desc    Download users data as CSV (with period filtering)
 // @route   GET /api/admin/users/export-csv
 // @access  Private/Admin
 export const exportUsersCSV = async (req, res) => {
   try {
+    if (req.setTimeout) req.setTimeout(300000); // 5 minutes timeout
+    const { period = 'all', startDate, endDate, filterBy = 'any' } = req.query;
+    const dateRange = getPeriodDateRange(period, startDate, endDate);
+
+    const query = { role: { $ne: 'admin' } };
+    if (dateRange) {
+      if (filterBy === 'created') {
+        query.createdAt = { $gte: dateRange.start, $lte: dateRange.end };
+      } else if (filterBy === 'active') {
+        query.lastActiveAt = { $gte: dateRange.start, $lte: dateRange.end };
+      } else {
+        query.$or = [
+          { createdAt: { $gte: dateRange.start, $lte: dateRange.end } },
+          { lastActiveAt: { $gte: dateRange.start, $lte: dateRange.end } }
+        ];
+      }
+    }
+
     const Module = (await import('../models/Module.js')).default;
     const modulesData = await Module.find({}, 'title').lean();
     const moduleMap = {};
@@ -527,7 +589,7 @@ export const exportUsersCSV = async (req, res) => {
       moduleMap[m._id.toString()] = m.title;
     });
 
-    const rawUsers = await User.find({ role: { $ne: 'admin' } })
+    const rawUsers = await User.find(query)
       .select('username name email phone school region city country classLevel isGuest onboardingCompleted platform totalPoints chaptersProgress createdAt lastActiveAt activeDaysCount whatsappNudges funnelStage')
       .sort({ _id: -1 })
       .lean();
@@ -634,7 +696,8 @@ export const exportUsersCSV = async (req, res) => {
     });
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
-    const filename = `hoshiyaar_all_users_${new Date().toISOString().split('T')[0]}.csv`;
+    const periodLabel = period !== 'all' ? `_${period}` : '_all';
+    const filename = `hoshiyaar_users${periodLabel}_${new Date().toISOString().split('T')[0]}.csv`;
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -700,9 +763,9 @@ export function buildAllSessions(users, moduleMap = {}) {
 
 // Helper to extract session-wise data from users' pointsLedger
 export const extractSessionsFromUsers = async (options = {}) => {
-  const { limit = 1000, forceRefresh = false } = options;
+  const { limit = 0, forceRefresh = false, dateRange = null } = options;
   const now = Date.now();
-  if (!forceRefresh && cachedSessions && (now - lastSessionsFetchTime < SESSIONS_CACHE_TTL)) {
+  if (!forceRefresh && !dateRange && cachedSessions && (now - lastSessionsFetchTime < SESSIONS_CACHE_TTL)) {
     return cachedSessions;
   }
 
@@ -714,15 +777,37 @@ export const extractSessionsFromUsers = async (options = {}) => {
   });
 
   const query = { role: { $ne: 'admin' }, totalPoints: { $gt: 0 } };
-  const rawUsers = await User.find(query)
-    .select('username name email phone school classLevel platform region city country pointsLedger')
-    .sort({ _id: -1 })
-    .limit(limit)
-    .lean();
+  if (dateRange) {
+    query.$or = [
+      { lastActiveAt: { $gte: dateRange.start, $lte: dateRange.end } },
+      { createdAt: { $gte: dateRange.start, $lte: dateRange.end } }
+    ];
+  }
 
-  cachedSessions = buildAllSessions(rawUsers, moduleMap);
-  lastSessionsFetchTime = Date.now();
-  return cachedSessions;
+  let usersQuery = User.find(query)
+    .select('username name email phone school classLevel platform region city country pointsLedger')
+    .sort({ _id: -1 });
+
+  if (limit > 0) {
+    usersQuery = usersQuery.limit(limit);
+  }
+
+  const rawUsers = await usersQuery.lean();
+  let allSessions = buildAllSessions(rawUsers, moduleMap);
+
+  if (dateRange) {
+    allSessions = allSessions.filter(s => {
+      const t = new Date(s.startTime).getTime();
+      return t >= dateRange.start.getTime() && t <= dateRange.end.getTime();
+    });
+  }
+
+  if (!dateRange) {
+    cachedSessions = allSessions;
+    lastSessionsFetchTime = Date.now();
+  }
+
+  return allSessions;
 };
 
 // @desc    Get session-wise analytics
@@ -749,9 +834,12 @@ export const getSessionsAnalytics = async (req, res) => {
 // @access  Private/Admin
 export const exportSessionsCSV = async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 1500;
+    if (req.setTimeout) req.setTimeout(300000); // 5 minutes timeout
+    const { period = 'all', startDate, endDate } = req.query;
+    const dateRange = getPeriodDateRange(period, startDate, endDate);
+    const limit = parseInt(req.query.limit) || (dateRange ? 0 : 5000);
     const forceRefresh = req.query.refresh === 'true';
-    const sessions = await extractSessionsFromUsers({ limit, forceRefresh });
+    const sessions = await extractSessionsFromUsers({ limit, forceRefresh, dateRange });
 
     const headers = [
       'Session ID',
@@ -805,7 +893,8 @@ export const exportSessionsCSV = async (req, res) => {
     ]);
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
-    const filename = `hoshiyaar_normal_sessions_${new Date().toISOString().split('T')[0]}.csv`;
+    const periodLabel = period !== 'all' ? `_${period}` : '_all';
+    const filename = `hoshiyaar_sessions${periodLabel}_${new Date().toISOString().split('T')[0]}.csv`;
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

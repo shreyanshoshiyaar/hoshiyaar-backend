@@ -68,13 +68,147 @@ export const getUsersAnalytics = async (req, res) => {
       return res.json(cachedAnalytics);
     }
 
-    // Fetch non-admin users with projection excluding the 50MB+ pointsLedger, sorted by most recent
-    const limit = parseInt(req.query.limit) || 1000;
-    const rawUsers = await User.find({ role: { $ne: 'admin' } })
-      .select('username name email phone school region city country classLevel isGuest onboardingCompleted platform totalPoints chaptersProgress createdAt lastActiveAt activeDaysCount whatsappNudges funnelStage')
-      .sort({ _id: -1 })
-      .limit(limit)
-      .lean();
+    // 1. Fetch global counts, aggregation metrics, and charts data in parallel
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setHours(0, 0, 0, 0);
+
+    const limit = req.query.all === 'true' || req.query.limit === 'all' ? 0 : (parseInt(req.query.limit) || 1000);
+
+    const [
+      totalUsersCount,
+      registeredUsersCount,
+      whatsappNudge0MinCount,
+      whatsappNudge0MinConvertedCount,
+      globalAggResult,
+      gradeAgg,
+      schoolAgg,
+      platformAgg,
+      regionAgg,
+      signupsAgg,
+      activeAgg,
+      rawUsers
+    ] = await Promise.all([
+      // Total non-admin users across whole DB
+      User.countDocuments({ role: { $ne: 'admin' } }),
+      // Total registered (non-guest) users across whole DB
+      User.countDocuments({ role: { $ne: 'admin' }, isGuest: false }),
+      // Total 0-min WhatsApp nudges sent across whole DB
+      User.countDocuments({ role: { $ne: 'admin' }, 'whatsappNudges.noModule30mSent': true }),
+      // Total converted 0-min nudges across whole DB
+      User.countDocuments({
+        role: { $ne: 'admin' },
+        'whatsappNudges.noModule30mSent': true,
+        $or: [
+          { totalPoints: { $gt: 0 } },
+          { 'chaptersProgress.0': { $exists: true } }
+        ]
+      }),
+      // Global points, onboarding completion, and unstarted counts
+      User.aggregate([
+        { $match: { role: { $ne: 'admin' } } },
+        {
+          $group: {
+            _id: null,
+            totalPoints: { $sum: '$totalPoints' },
+            onboardingCompletedCount: {
+              $sum: { $cond: [{ $eq: ['$onboardingCompleted', true] }, 1, 0] }
+            },
+            noModuleStartedCount: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $or: [{ $eq: ['$totalPoints', 0] }, { $not: ['$totalPoints'] }] },
+                      { $or: [{ $eq: [{ $size: { $ifNull: ['$chaptersProgress', []] } }, 0] }] }
+                    ]
+                  },
+                  1,
+                  0
+                ]
+              }
+            }
+          }
+        }
+      ]),
+      // Grade distribution across whole DB
+      User.aggregate([
+        { $match: { role: { $ne: 'admin' } } },
+        { $group: { _id: '$classLevel', count: { $sum: 1 } } }
+      ]),
+      // School distribution across whole DB (top 10 schools)
+      User.aggregate([
+        { $match: { role: { $ne: 'admin' } } },
+        { $group: { _id: '$school', count: { $sum: 1 }, totalPoints: { $sum: '$totalPoints' } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ]),
+      // Platform distribution across whole DB
+      User.aggregate([
+        { $match: { role: { $ne: 'admin' } } },
+        { $group: { _id: '$platform', count: { $sum: 1 } } }
+      ]),
+      // Region distribution across whole DB
+      User.aggregate([
+        { $match: { role: { $ne: 'admin' }, region: { $exists: true, $ne: null } } },
+        { $group: { _id: '$region', count: { $sum: 1 } } },
+        { $sort: { count: -1 } }
+      ]),
+      // Signups in last 30 days grouped by IST date & hour
+      User.aggregate([
+        { $match: { role: { $ne: 'admin' }, createdAt: { $gte: thirtyDaysAgo } } },
+        {
+          $project: {
+            createdAtIST: {
+              $dateAdd: {
+                startDate: '$createdAt',
+                unit: 'minute',
+                amount: 330
+              }
+            }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              dateStr: { $dateToString: { format: '%Y-%m-%d', date: '$createdAtIST' } },
+              hour: { $hour: '$createdAtIST' }
+            },
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+      // Active users in last 30 days grouped by IST date & hour
+      User.aggregate([
+        { $match: { role: { $ne: 'admin' }, lastActiveAt: { $gte: thirtyDaysAgo } } },
+        {
+          $project: {
+            activeAtIST: {
+              $dateAdd: {
+                startDate: '$lastActiveAt',
+                unit: 'minute',
+                amount: 330
+              }
+            }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              dateStr: { $dateToString: { format: '%Y-%m-%d', date: '$activeAtIST' } },
+              hour: { $hour: '$activeAtIST' }
+            },
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+      // Fetch user documents for the table (excluding heavy 50MB+ pointsLedger)
+      User.find({ role: { $ne: 'admin' } })
+        .select('username name email phone school region city country classLevel isGuest onboardingCompleted platform totalPoints chaptersProgress createdAt lastActiveAt activeDaysCount whatsappNudges funnelStage')
+        .sort({ _id: -1 })
+        .limit(limit)
+        .lean()
+    ]);
 
     const users = rawUsers.map(user => {
       let totalAttempts = 0;
@@ -151,7 +285,7 @@ export const getUsersAnalytics = async (req, res) => {
       };
     });
 
-    // 2.5 Resolve Module Titles for lastSessionLocation
+    // Resolve Module Titles for lastSessionLocation
     const uniqueModuleIds = [...new Set(users.map(u => u.lastSessionModuleId).filter(Boolean))];
     const modulesData = await Module.find({ _id: { $in: uniqueModuleIds } }, 'title').lean();
     const moduleMap = {};
@@ -168,45 +302,25 @@ export const getUsersAnalytics = async (req, res) => {
       delete u.lastSessionModuleId; // remove internal ID to keep response clean
     });
 
-    // 3. Aggregate top-level dashboard metrics
-    const totalUsers = users.length;
-    const guestsCount = users.filter(u => u.isGuest).length;
-    const registeredCount = users.filter(u => !u.isGuest).length;
-    const avgPoints = totalUsers > 0 ? Math.round(users.reduce((acc, u) => acc + u.totalPoints, 0) / totalUsers) : 0;
-    const onboardingRate = totalUsers > 0 ? Math.round((users.filter(u => u.onboardingCompleted).length / totalUsers) * 100) : 0;
+    // 2. Global dashboard KPI metrics across all users
+    const totalUsers = totalUsersCount;
+    const registeredCount = registeredUsersCount;
+    const guestsCount = Math.max(0, totalUsers - registeredCount);
+    const globalAgg = globalAggResult[0] || {};
+    const avgPoints = totalUsers > 0 ? Math.round((globalAgg.totalPoints || 0) / totalUsers) : 0;
+    const onboardingRate = totalUsers > 0 ? Math.round(((globalAgg.onboardingCompletedCount || 0) / totalUsers) * 100) : 0;
+    const noModuleStartedCount = globalAgg.noModuleStartedCount || 0;
 
     const usersWithUse = users.filter(u => u.useTime > 0);
     const avgAccuracy = usersWithUse.length > 0
       ? Math.round(usersWithUse.reduce((acc, u) => acc + u.accuracy, 0) / usersWithUse.length)
       : 0;
-    
-    const avgUseTime = totalUsers > 0 ? Math.round(users.reduce((acc, u) => acc + u.useTime, 0) / totalUsers) : 0;
+    const avgUseTime = users.length > 0 ? Math.round(users.reduce((acc, u) => acc + u.useTime, 0) / users.length) : 0;
 
-    // WhatsApp Nudges & Module Engagement Aggregation
-    let whatsappStats = {
-      nudge_0_min: 0,
-      nudge_0_min_converted: 0,
+    const whatsappStats = {
+      nudge_0_min: whatsappNudge0MinCount,
+      nudge_0_min_converted: whatsappNudge0MinConvertedCount,
     };
-    let noModuleStartedCount = 0;
-
-    users.forEach(u => {
-      // User has not started any module (no chapters progress and no quiz attempts/useTime)
-      const hasChaptersProgress = u.chaptersProgress && u.chaptersProgress.length > 0;
-      const hasCompletedModules = (u.completedModulesCount || 0) > 0;
-      const hasUseTime = (u.useTime || 0) > 0;
-      const hasPoints = (u.totalPoints || 0) > 0;
-
-      if (!hasChaptersProgress && !hasCompletedModules && !hasUseTime && !hasPoints) {
-        noModuleStartedCount++;
-      }
-
-      if (u.whatsappNudges && u.whatsappNudges.noModule30mSent) {
-        whatsappStats.nudge_0_min++;
-        if (hasChaptersProgress || hasCompletedModules || hasPoints) {
-          whatsappStats.nudge_0_min_converted++;
-        }
-      }
-    });
 
     const stats = {
       totalUsers,
@@ -220,48 +334,46 @@ export const getUsersAnalytics = async (req, res) => {
       whatsappStats,
     };
 
-    // 4. Group data for Charts (Grade level, School and Timelines)
+    // 3. Global Charts Data across all users
     
-    // Grade Distribution
+    // Grade Distribution (merged)
     const gradeMap = {};
-    users.forEach(u => {
-      const grade = u.classLevel;
-      gradeMap[grade] = (gradeMap[grade] || 0) + 1;
+    gradeAgg.forEach(g => {
+      const name = (!g._id || g._id === 'Not Specified' || g._id === '') ? 'Other / Guest' : `Class ${g._id}`;
+      gradeMap[name] = (gradeMap[name] || 0) + g.count;
     });
-    const gradeDistribution = Object.keys(gradeMap).map(grade => ({
-      name: grade === 'Not Specified' ? 'Other / Guest' : `Class ${grade}`,
-      value: gradeMap[grade],
-    }));
+    const gradeDistribution = Object.keys(gradeMap)
+      .map(name => ({ name, value: gradeMap[name] }))
+      .filter(g => g.value > 0);
 
     // School Distribution
-    const schoolMap = {};
-    users.forEach(u => {
-      const sch = u.school;
-      if (!schoolMap[sch]) {
-        schoolMap[sch] = { name: sch, students: 0, totalPoints: 0 };
-      }
-      schoolMap[sch].students += 1;
-      schoolMap[sch].totalPoints += u.totalPoints;
-    });
-    const schoolDistribution = Object.values(schoolMap)
+    const schoolDistribution = schoolAgg
+      .filter(s => s._id && s._id.trim() !== '')
       .map(s => ({
-        name: s.name,
-        count: s.students,
-        avgPoints: Math.round(s.totalPoints / s.students),
+        name: s._id,
+        count: s.count,
+        avgPoints: s.count > 0 ? Math.round((s.totalPoints || 0) / s.count) : 0,
       }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10); // top 10 schools
+      .slice(0, 10);
 
-    // Helper for IST time
-    const getISTDateHour = (dateInput) => {
-      const d = new Date(dateInput);
-      d.setUTCHours(d.getUTCHours() + 5);
-      d.setUTCMinutes(d.getUTCMinutes() + 30);
-      return {
-        dateStr: d.toISOString().split('T')[0],
-        hour: d.getUTCHours()
-      };
-    };
+    // Platform Distribution (merged)
+    const platformCountMap = {};
+    platformAgg.forEach(p => {
+      const rawName = p._id || 'unknown';
+      const name = rawName === 'unknown' ? 'Unknown' : (rawName.charAt(0).toUpperCase() + rawName.slice(1));
+      platformCountMap[name] = (platformCountMap[name] || 0) + p.count;
+    });
+    const platformDistribution = Object.keys(platformCountMap)
+      .map(name => ({ name, value: platformCountMap[name] }))
+      .filter(p => p.value > 0);
+
+    // Region Distribution
+    const regionDistribution = regionAgg
+      .filter(r => r._id && r._id.trim() !== '')
+      .map(r => ({
+        name: r._id,
+        value: r.count,
+      }));
 
     // Signups & Activity Timeline (last 30 days)
     const timelineMap = {};
@@ -269,7 +381,6 @@ export const getUsersAnalytics = async (req, res) => {
       const d = new Date();
       d.setUTCHours(d.getUTCHours() + 5);
       d.setUTCMinutes(d.getUTCMinutes() + 30);
-      // d.getUTCDate() works properly after adding hours
       d.setUTCDate(d.getUTCDate() - i);
       const dateStr = d.toISOString().split('T')[0];
       
@@ -282,84 +393,27 @@ export const getUsersAnalytics = async (req, res) => {
       timelineMap[dateStr] = { date: dateStr, signups: 0, activeUsers: 0, hourly };
     }
 
-    users.forEach(u => {
-      // 1. Plot signups
-      if (u.createdAt) {
-        const { dateStr, hour } = getISTDateHour(u.createdAt);
-        if (timelineMap[dateStr]) {
-          timelineMap[dateStr].signups += 1;
-          timelineMap[dateStr].hourly[hour].signups += 1;
+    signupsAgg.forEach(item => {
+      const { dateStr, hour } = item._id;
+      if (timelineMap[dateStr]) {
+        timelineMap[dateStr].signups += item.count;
+        if (timelineMap[dateStr].hourly && timelineMap[dateStr].hourly[hour]) {
+          timelineMap[dateStr].hourly[hour].signups += item.count;
         }
       }
+    });
 
-      // 2. Plot True DAU (Daily Active Users)
-      if (u._allTimestamps && u._allTimestamps.length > 0) {
-        const activeDaysForUser = new Set();
-        const activeHoursForUser = new Set();
-        
-        u._allTimestamps.forEach(t => {
-          const { dateStr, hour } = getISTDateHour(t);
-          activeDaysForUser.add(dateStr);
-          activeHoursForUser.add(`${dateStr}|${hour}`);
-        });
-
-        // Add this user to the total DAU count for those specific days
-        activeDaysForUser.forEach(dateStr => {
-          if (timelineMap[dateStr]) {
-            timelineMap[dateStr].activeUsers += 1;
-          }
-        });
-        
-        // Add this user to the hourly breakdown
-        activeHoursForUser.forEach(entry => {
-          const [dateStr, hourStr] = entry.split('|');
-          const hr = parseInt(hourStr, 10);
-          if (timelineMap[dateStr] && timelineMap[dateStr].hourly[hr]) {
-            timelineMap[dateStr].hourly[hr].activeUsers += 1;
-          }
-        });
-        
-        delete u._allTimestamps;
-      } else if (u.lastActive) {
-        // Fallback for users with no pointsLedger activity (e.g. 0-min users or pure scrollers)
-        const { dateStr, hour } = getISTDateHour(u.lastActive);
-        if (timelineMap[dateStr]) {
-          timelineMap[dateStr].activeUsers += 1;
-          if (timelineMap[dateStr].hourly[hour]) {
-            timelineMap[dateStr].hourly[hour].activeUsers += 1;
-          }
+    activeAgg.forEach(item => {
+      const { dateStr, hour } = item._id;
+      if (timelineMap[dateStr]) {
+        timelineMap[dateStr].activeUsers += item.count;
+        if (timelineMap[dateStr].hourly && timelineMap[dateStr].hourly[hour]) {
+          timelineMap[dateStr].hourly[hour].activeUsers += item.count;
         }
       }
     });
 
     const activeTimeline = Object.values(timelineMap);
-
-    // Platform Distribution
-    const platformMap = { web: 0, android: 0, ios: 0, unknown: 0 };
-    users.forEach(u => {
-      const p = u.platform || 'unknown';
-      if (platformMap[p] !== undefined) platformMap[p]++;
-    });
-    const platformDistribution = Object.keys(platformMap)
-      .filter(k => platformMap[k] > 0)
-      .map(k => ({
-        name: k.charAt(0).toUpperCase() + k.slice(1),
-        value: platformMap[k]
-      }));
-
-    // Region Distribution
-    const regionMap = {};
-    users.forEach(u => {
-      if (u.region) {
-        regionMap[u.region] = (regionMap[u.region] || 0) + 1;
-      }
-    });
-    const regionDistribution = Object.keys(regionMap)
-      .map(region => ({
-        name: region,
-        value: regionMap[region],
-      }))
-      .sort((a, b) => b.value - a.value);
 
     const responseData = {
       success: true,

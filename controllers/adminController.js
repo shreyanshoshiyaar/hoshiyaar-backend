@@ -65,7 +65,10 @@ export const getUsersAnalytics = async (req, res) => {
     const now = Date.now();
 
     if (!shouldRefresh && cachedAnalytics && (now - lastAnalyticsFetchTime < ANALYTICS_CACHE_TTL)) {
-      return res.json(cachedAnalytics);
+      // If cachedAnalytics had a truncated user array from an older query, don't serve stale cache
+      if (!cachedAnalytics.users || !cachedAnalytics.stats || cachedAnalytics.users.length >= cachedAnalytics.stats.totalUsers) {
+        return res.json(cachedAnalytics);
+      }
     }
 
     // 1. Fetch global counts, aggregation metrics, and charts data in parallel
@@ -511,6 +514,136 @@ function buildSessionRecord(user, entries, moduleMap, index) {
     modulesStudied: moduleTitles.join('; ') || 'N/A'
   };
 }
+
+// @desc    Download ALL users data as CSV
+// @route   GET /api/admin/users/export-csv
+// @access  Private/Admin
+export const exportUsersCSV = async (req, res) => {
+  try {
+    const Module = (await import('../models/Module.js')).default;
+    const modulesData = await Module.find({}, 'title').lean();
+    const moduleMap = {};
+    modulesData.forEach(m => {
+      moduleMap[m._id.toString()] = m.title;
+    });
+
+    const rawUsers = await User.find({ role: { $ne: 'admin' } })
+      .select('username name email phone school region city country classLevel isGuest onboardingCompleted platform totalPoints chaptersProgress createdAt lastActiveAt activeDaysCount whatsappNudges funnelStage')
+      .sort({ _id: -1 })
+      .lean();
+
+    const headers = [
+      'Username',
+      'Name',
+      'Email',
+      'Phone',
+      'School',
+      'Region',
+      'City',
+      'Country',
+      'Class',
+      'Type',
+      'Platform',
+      'Points',
+      'Use Time (mins)',
+      'Accuracy (%)',
+      'Days Visited',
+      'Last Active (IST)',
+      'Last Session Module',
+      'Registered At (IST)'
+    ];
+
+    const escapeCSV = (val) => {
+      if (val === null || val === undefined) return '""';
+      return `"${String(val).replace(/"/g, '""')}"`;
+    };
+
+    const toISTStr = (dateVal) => {
+      if (!dateVal) return 'Never';
+      const d = new Date(dateVal);
+      if (isNaN(d.getTime())) return 'Never';
+      return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    };
+
+    const rows = rawUsers.map(user => {
+      let totalAttempts = 0;
+      let correctAttempts = 0;
+      let lastActive = user.lastActiveAt || user.createdAt || null;
+      let dynamicActiveDays = user.activeDaysCount || 1;
+      const activeDays = new Set();
+      let completedModulesCount = 0;
+      let lastSessionModuleId = null;
+
+      if (user.chaptersProgress && Array.isArray(user.chaptersProgress)) {
+        user.chaptersProgress.forEach(ch => {
+          if (ch.completedModules && Array.isArray(ch.completedModules)) {
+            completedModulesCount += ch.completedModules.length;
+            if (ch.completedModules.length > 0) {
+              lastSessionModuleId = ch.completedModules[ch.completedModules.length - 1];
+            }
+          }
+          if (ch.stats) {
+            const statsEntries = ch.stats instanceof Map
+              ? Array.from(ch.stats.values())
+              : Object.values(ch.stats);
+
+            statsEntries.forEach(s => {
+              if (s) {
+                totalAttempts += (s.correct || 0) + (s.wrong || 0);
+                correctAttempts += (s.correct || 0);
+                if (s.lastReviewedAt) {
+                  const d = new Date(s.lastReviewedAt);
+                  if (!isNaN(d.getTime())) {
+                    activeDays.add(d.toDateString());
+                    if (!lastActive || d > new Date(lastActive)) {
+                      lastActive = d;
+                    }
+                  }
+                }
+              }
+            });
+          }
+        });
+      }
+
+      const accuracy = totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0;
+      dynamicActiveDays = Math.max(dynamicActiveDays, activeDays.size);
+      const useTime = Math.round(completedModulesCount * 4);
+      const lastLocation = (lastSessionModuleId && moduleMap[lastSessionModuleId]) ? moduleMap[lastSessionModuleId] : 'N/A';
+
+      return [
+        escapeCSV(user.username || 'Anonymous Guest'),
+        escapeCSV(user.name || 'N/A'),
+        escapeCSV(user.email || ''),
+        escapeCSV(user.phone || ''),
+        escapeCSV(user.school || 'Self Study / Individual'),
+        escapeCSV(user.region || ''),
+        escapeCSV(user.city || ''),
+        escapeCSV(user.country || ''),
+        escapeCSV(user.classLevel || 'Not Specified'),
+        escapeCSV(user.isGuest ? 'Guest' : 'Registered'),
+        escapeCSV(user.platform || 'unknown'),
+        user.totalPoints || 0,
+        useTime,
+        accuracy,
+        dynamicActiveDays,
+        escapeCSV(toISTStr(lastActive)),
+        escapeCSV(lastLocation),
+        escapeCSV(toISTStr(user.createdAt))
+      ];
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+    const filename = `hoshiyaar_all_users_${new Date().toISOString().split('T')[0]}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(csvContent);
+  } catch (error) {
+    console.error('🔥 Error in exportUsersCSV:', error);
+    res.status(500).json({ message: `Server Error: ${error.message}` });
+  }
+};
 
 let cachedSessions = null;
 let lastSessionsFetchTime = 0;

@@ -1,5 +1,5 @@
 import express from 'express';
-import { adminLogin, getUsersAnalytics, updateUserSchool, getSessionsAnalytics, exportSessionsCSV, getNotificationAnalytics } from '../controllers/adminController.js';
+import { adminLogin, getUsersAnalytics, updateUserSchool, getSessionsAnalytics, exportSessionsCSV, exportUsersCSV, getNotificationAnalytics } from '../controllers/adminController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -12,6 +12,7 @@ router.get('/verify', protect, admin, (req, res) => {
 });
 
 router.get('/users-analytics', protect, admin, getUsersAnalytics);
+router.get('/users/export-csv', protect, admin, exportUsersCSV);
 router.get('/sessions', protect, admin, getSessionsAnalytics);
 router.get('/sessions/export-csv', protect, admin, exportSessionsCSV);
 

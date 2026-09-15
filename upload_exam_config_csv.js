@@ -30,9 +30,9 @@ async function uploadExamConfig() {
       const chapterConfigs = {};
       
       for (const row of results) {
-         const chapterTitle = (row['Chapter'] || row['Chapter_title'] || row['chapter'])?.replace(/\n/g, ' ')?.replace(/\r/g, '')?.trim();
-         const boardName = (row['Board'] || row['board'])?.trim();
-         const className = (row['Class'] || row['class'])?.trim();
+         const chapterTitle = (row['Chapter'] || row['Chapter_title'] || row['Chapter name'] || row['chapter'])?.replace(/\n/g, ' ')?.replace(/\r/g, '')?.trim();
+         const boardName = (row['Board'] || row['Board_title'] || row['board'])?.replace(/\n/g, ' ')?.replace(/\r/g, '')?.trim();
+         const className = (row['Class'] || row['class'])?.replace(/\n/g, ' ')?.replace(/\r/g, '')?.trim();
          const subjectName = (row['Subject'] || row['subject'] || 'Science')?.trim();
          
          const groupKey = (boardName && className && subjectName) 

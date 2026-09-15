@@ -114,11 +114,18 @@ async function uploadExamConfig() {
                   continue;
               }
               
-              chapter = await Chapter.findOne({ title: config.title, subjectId: subjectDoc._id });
+              const escapedTitle = config.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[-–—]/g, '[-–—]').replace(/\s+/g, '\\s+');
+              const titleRegex = new RegExp(`^${escapedTitle}$`, 'i');
+              chapter = await Chapter.findOne({ title: titleRegex, subjectId: subjectDoc._id });
+              if (!chapter) {
+                  // Fallback without strict start/end if exact title differs slightly
+                  chapter = await Chapter.findOne({ title: new RegExp(config.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), subjectId: subjectDoc._id });
+              }
           }
           // Ultimate fallback to just title (Risky)
           else if (config.title) {
-              chapter = await Chapter.findOne({ title: config.title });
+              const escapedTitle = config.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              chapter = await Chapter.findOne({ title: new RegExp(`^${escapedTitle}$`, 'i') }) || await Chapter.findOne({ title: new RegExp(escapedTitle, 'i') });
           }
           
           if (!chapter) {

@@ -30,10 +30,10 @@ async function uploadExamConfig() {
       const chapterConfigs = {};
       
       for (const row of results) {
-         const chapterTitle = row['Chapter_title']?.replace(/\n/g, ' ')?.replace(/\r/g, '')?.trim();
-         const boardName = row['Board']?.trim();
-         const className = row['Class']?.trim();
-         const subjectName = row['Subject']?.trim();
+         const chapterTitle = (row['Chapter'] || row['Chapter_title'] || row['chapter'])?.replace(/\n/g, ' ')?.replace(/\r/g, '')?.trim();
+         const boardName = (row['Board'] || row['board'])?.trim();
+         const className = (row['Class'] || row['class'])?.trim();
+         const subjectName = (row['Subject'] || row['subject'] || 'Science')?.trim();
          
          const groupKey = (boardName && className && subjectName) 
             ? `${boardName}_${className}_${subjectName}_${chapterTitle}` 
@@ -47,7 +47,7 @@ async function uploadExamConfig() {
                  board: boardName,
                  classLevel: className,
                  subject: subjectName,
-                 subjectKnowledge: row['subject_knowledge']?.trim() || '',
+                 subjectKnowledge: (row['subject_knowledge'] || row['Subject_knowledge'])?.trim() || '',
                  revisionCards: [],
                  questions: [],
                  mcqs: [],
@@ -55,28 +55,36 @@ async function uploadExamConfig() {
              };
          }
          
-         if (row['subject_knowledge'] && row['subject_knowledge'].trim()) {
-             chapterConfigs[groupKey].subjectKnowledge = row['subject_knowledge'].trim();
+         const subjKnowledge = (row['subject_knowledge'] || row['Subject_knowledge'])?.trim();
+         if (subjKnowledge) {
+             chapterConfigs[groupKey].subjectKnowledge = subjKnowledge;
          }
          
          const type = row['Type']?.trim().toLowerCase();
-         if (type === 'revise' && row['Revise image']) {
-             const content = row['Revise image'].trim();
-             chapterConfigs[groupKey].revisionCards.push(content);
-             chapterConfigs[groupKey].flowItems.push({ type: 'revision_card', content });
-         } else if (type === 'descriptive' && row['Question']) {
+         const image = (row['Image'] || row['Revise image'] || row['image'])?.trim();
+         const questionText = row['Question']?.trim();
+         const descriptiveAnswer = (row['Answer Descriptive'] || row['Answer'] || row['Expected Answer'])?.trim() || '';
+         const mcqAnswer = (row['MCQ answer'] || row['Answer'] || row['Answer Descriptive'])?.trim() || '';
+
+         if (type === 'revise' && image) {
+             chapterConfigs[groupKey].revisionCards.push(image);
+             chapterConfigs[groupKey].flowItems.push({ type: 'revision_card', content: image });
+         } else if (type === 'descriptive' && questionText) {
              const question = {
-                 text: row['Question'].trim(),
-                 expected: row['Answer Descriptive']?.trim() || ''
+                 text: questionText,
+                 expected: descriptiveAnswer
              };
+             if (image) question.image = image;
              chapterConfigs[groupKey].questions.push(question);
              chapterConfigs[groupKey].flowItems.push({ type: 'descriptive_question', ...question });
-         } else if (type === 'mcq' && row['Question'] && row['Option MCQ']) {
+         } else if (type === 'mcq' && questionText && (row['Option MCQ'] || row['Options'])) {
+             const optionsRaw = row['Option MCQ'] || row['Options'] || '';
              const mcq = {
-                 text: row['Question'].trim(),
-                 options: row['Option MCQ'].split(',').map(o => o.trim()).filter(o => o),
-                 expected: row['MCQ answer']?.trim() || ''
+                 text: questionText,
+                 options: optionsRaw.split(',').map(o => o.trim()).filter(o => o),
+                 expected: mcqAnswer
              };
+             if (image) mcq.image = image;
              chapterConfigs[groupKey].mcqs.push(mcq);
              chapterConfigs[groupKey].flowItems.push({ type: 'mcq', ...mcq });
          }

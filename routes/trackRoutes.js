@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import NotificationClick from '../models/NotificationClick.js';
 
 const router = express.Router();
@@ -8,7 +8,7 @@ router.post('/notification-click', async (req, res) => {
   try {
     const { type, userId } = req.body;
 
-    const validTypes = ['daily_mass', 'inactivity_nudge', 'streak_risk', 'rank_drop', 'chapter_promo', 'manual_nudge', 'unknown'];
+    const validTypes = ['daily_mass', 'inactivity_nudge', 'streak_risk', 'rank_drop', 'chapter_promo', 'exam_mode_live', 'manual_nudge', 'unknown'];
     const clickType = validTypes.includes(type) ? type : 'unknown';
 
     await NotificationClick.create({

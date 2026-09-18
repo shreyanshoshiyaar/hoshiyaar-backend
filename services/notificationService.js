@@ -734,6 +734,136 @@ export const startChapterSpecificNotificationCron = () => {
   console.log('🚀 Chapter Specific Notification Crons Scheduled (Daily 7:00 PM & 8:00 PM IST for 7 Days)');
 };
 
+/**
+ * Cron Job: Daily Exam Mode is Live notification at 7:30 PM IST
+ */
+export const startExamModeLiveNotificationCron = () => {
+  // 7:30 PM IST -> 19:30 IST ('30 19 * * *')
+  cron.schedule('30 19 * * *', async () => {
+    console.log('⏰ Running Exam Mode Live Notification Cron (7:30 PM IST)...');
+
+    try {
+      const todayString = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }).split(',')[0].replace(/\//g, '-');
+      const lockKey = `cron_exam_mode_live_${todayString}`;
+
+      const lock = await SystemSettings.findOneAndUpdate(
+        { key: lockKey },
+        { $setOnInsert: { key: lockKey, value: 'locked', description: `Lock for exam mode live notification on ${todayString}` } },
+        { upsert: true, returnDocument: 'before' }
+      );
+
+      if (lock) {
+        console.log(`🔒 Exam Mode Live Notification already ran today (Lock found: ${lockKey}). Skipping.`);
+        return;
+      }
+
+      const examMessages = [
+        {
+          title: "🎯 Exam Mode is LIVE!",
+          body: "Test your skills with real exam questions and instant AI feedback! Tap to take the test now."
+        },
+        {
+          title: "⚡ Score 100% in Your Exams! 🏆",
+          body: "Exam Mode is now open! Practice descriptive answers & MCQs for your chapters today."
+        },
+        {
+          title: "📝 Ready for Exam Practice? 🚀",
+          body: "Exam Mode is live! Revise key concepts and test your accuracy before your school tests."
+        },
+        {
+          title: "🔥 Challenge Yourself in Exam Mode!",
+          body: "Practice real chapter exam questions, get evaluated instantly, and level up your grades!"
+        }
+      ];
+
+      // Rotate message day by day
+      const dayNum = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
+      const selected = examMessages[dayNum % examMessages.length];
+      const ACTION_URL = "/exam";
+
+      const users = await User.find({ fcmToken: { $ne: null } }, 'name fcmToken currentStreak');
+      if (!users || users.length === 0) {
+        console.log('No users with FCM tokens found for Exam Mode notification.');
+        return;
+      }
+
+      const validUsers = users.filter(u => u.fcmToken && u.fcmToken.length > 10);
+      if (validUsers.length === 0) return;
+
+      // Deduplicate devices by token
+      const uniqueDeviceMap = new Map();
+      validUsers.forEach(user => {
+        const existing = uniqueDeviceMap.get(user.fcmToken);
+        const currentStreak = user.currentStreak || 0;
+        if (!existing || currentStreak > (existing.currentStreak || 0)) {
+          uniqueDeviceMap.set(user.fcmToken, user);
+        }
+      });
+      const uniqueValidUsers = Array.from(uniqueDeviceMap.values());
+
+      console.log(`📢 Sending Exam Mode Live notification to ${uniqueValidUsers.length} active devices...`);
+
+      const messages = uniqueValidUsers.map(user => ({
+        notification: {
+          title: selected.title,
+          body: selected.body
+        },
+        data: {
+          url: ACTION_URL,
+          type: 'exam_mode_live'
+        },
+        token: user.fcmToken,
+        android: {
+          priority: 'high',
+          notification: {
+            channelId: 'study_reminders',
+            defaultSound: true,
+            defaultVibrateTimings: true,
+          }
+        }
+      }));
+
+      const batches = [];
+      for (let i = 0; i < messages.length; i += 500) {
+        batches.push(messages.slice(i, i + 500));
+      }
+
+      let successCount = 0;
+      let failureCount = 0;
+
+      for (const batch of batches) {
+        const response = await admin.messaging().sendEach(batch);
+        successCount += response.successCount;
+        failureCount += response.failureCount;
+
+        if (response.failureCount > 0) {
+          const failedTokens = [];
+          response.responses.forEach((resp, idx) => {
+            if (!resp.success) {
+              failedTokens.push(batch[idx].token);
+            }
+          });
+
+          if (failedTokens.length > 0) {
+            await User.updateMany(
+              { fcmToken: { $in: failedTokens } },
+              { $set: { fcmToken: null } }
+            );
+          }
+        }
+      }
+
+      console.log(`✅ Exam Mode Live Notification completed. (Sent: ${successCount}, Failed: ${failureCount})`);
+    } catch (error) {
+      console.error('Error in Exam Mode Live Notification Cron:', error);
+    }
+  }, {
+    timezone: 'Asia/Kolkata'
+  });
+
+  console.log('🚀 Exam Mode Live Notification Cron Scheduled (Daily 7:30 PM IST)');
+};
+
 // Cron Job: Automatically reset weekly challenges in the database every Monday at 00:00 IST
 export const startWeeklyGoalResetCron = () => {
   cron.schedule('0 0 * * 1', async () => {

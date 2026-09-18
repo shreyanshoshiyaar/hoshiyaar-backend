@@ -929,7 +929,7 @@ export const getNotificationAnalytics = async (req, res) => {
       .select('type clickedAt')
       .lean();
 
-    const TYPES = ['daily_mass', 'inactivity_nudge', 'streak_risk', 'rank_drop', 'chapter_promo', 'manual_nudge', 'unknown'];
+    const TYPES = ['daily_mass', 'inactivity_nudge', 'streak_risk', 'rank_drop', 'chapter_promo', 'exam_mode_live', 'manual_nudge', 'unknown'];
 
     // Build empty day map for last N days
     const dayMap = {};

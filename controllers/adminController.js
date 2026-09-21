@@ -14,6 +14,81 @@ let cachedAnalytics = null;
 let lastAnalyticsFetchTime = 0;
 const ANALYTICS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
 
+let cachedUserLedgerMap = null;
+let lastLedgerFetchTime = 0;
+const LEDGER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
+
+// Efficiently build a lightweight map of userId -> { useTime, totalAttempts, correctAttempts, activeDaysCount, lastActive }
+// from pointsLedger for users with points, computing true clustered session duration without heavy JSON payloads
+export async function getUserLedgerStatsMap(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && cachedUserLedgerMap && (now - lastLedgerFetchTime < LEDGER_CACHE_TTL)) {
+    return cachedUserLedgerMap;
+  }
+
+  const usersWithLedger = await User.find({ role: { $ne: 'admin' }, totalPoints: { $gt: 0 } })
+    .select('_id pointsLedger')
+    .lean();
+
+  const userStatsMap = new Map();
+  const maxGap = 15 * 60 * 1000; // 15-minute sliding session window
+
+  for (const u of usersWithLedger) {
+    if (!u || !u.pointsLedger) continue;
+    const entries = u.pointsLedger instanceof Map
+      ? Array.from(u.pointsLedger.values())
+      : Object.values(u.pointsLedger);
+
+    if (entries.length === 0) continue;
+
+    let totalAttempts = entries.length;
+    let correctAttempts = entries.filter(e => e && e.correct).length;
+    const activeDays = new Set();
+    let lastActive = null;
+
+    const timestamps = entries
+      .map(e => {
+        const raw = e && (e.attemptedAt || e.earnedAt || e.createdAt);
+        return raw ? new Date(raw).getTime() : null;
+      })
+      .filter(t => t && !isNaN(t))
+      .sort((a, b) => a - b);
+
+    let clusteredMins = 0;
+    if (timestamps.length > 0) {
+      lastActive = new Date(timestamps[timestamps.length - 1]);
+      timestamps.forEach(t => activeDays.add(new Date(t).toDateString()));
+
+      let sessionStart = timestamps[0];
+      let sessionEnd = timestamps[0];
+
+      for (let i = 1; i < timestamps.length; i++) {
+        const t = timestamps[i];
+        if (t - sessionEnd <= maxGap) {
+          sessionEnd = t;
+        } else {
+          clusteredMins += Math.max(2, (sessionEnd - sessionStart) / 60000);
+          sessionStart = t;
+          sessionEnd = t;
+        }
+      }
+      clusteredMins += Math.max(2, (sessionEnd - sessionStart) / 60000);
+    }
+
+    userStatsMap.set(u._id.toString(), {
+      useTime: Math.round(clusteredMins),
+      totalAttempts,
+      correctAttempts,
+      activeDaysCount: activeDays.size,
+      lastActive
+    });
+  }
+
+  cachedUserLedgerMap = userStatsMap;
+  lastLedgerFetchTime = Date.now();
+  return userStatsMap;
+}
+
 // @desc    Auth admin & get token
 // @route   POST /api/admin/login
 // @access  Public
@@ -91,7 +166,8 @@ export const getUsersAnalytics = async (req, res) => {
       regionAgg,
       signupsAgg,
       activeAgg,
-      rawUsers
+      rawUsers,
+      userLedgerMap
     ] = await Promise.all([
       // Total non-admin users across whole DB
       User.countDocuments({ role: { $ne: 'admin' } }),
@@ -104,11 +180,12 @@ export const getUsersAnalytics = async (req, res) => {
         role: { $ne: 'admin' },
         'whatsappNudges.noModule30mSent': true,
         $or: [
+          { 'chaptersProgress.0': { $exists: true } },
           { totalPoints: { $gt: 0 } },
-          { 'chaptersProgress.0': { $exists: true } }
+          { pointsLedger: { $exists: true, $ne: {} } }
         ]
       }),
-      // Global points, onboarding completion, and unstarted counts
+      // Aggregate total points, completed onboarding, and users with zero modules
       User.aggregate([
         { $match: { role: { $ne: 'admin' } } },
         {
@@ -122,9 +199,9 @@ export const getUsersAnalytics = async (req, res) => {
               $sum: {
                 $cond: [
                   {
-                    $and: [
-                      { $or: [{ $eq: ['$totalPoints', 0] }, { $not: ['$totalPoints'] }] },
-                      { $or: [{ $eq: [{ $size: { $ifNull: ['$chaptersProgress', []] } }, 0] }] }
+                    $or: [
+                      { $eq: [{ $ifNull: ['$chaptersProgress', []] }, []] },
+                      { $eq: [{ $size: { $ifNull: ['$chaptersProgress', []] } }, 0] }
                     ]
                   },
                   1,
@@ -211,7 +288,9 @@ export const getUsersAnalytics = async (req, res) => {
         .select('username name email phone school region city country classLevel isGuest onboardingCompleted platform totalPoints chaptersProgress createdAt lastActiveAt activeDaysCount whatsappNudges funnelStage')
         .sort({ _id: -1 })
         .limit(limit)
-        .lean()
+        .lean(),
+      // Pre-compute lightweight session clustering from pointsLedger in parallel
+      getUserLedgerStatsMap(shouldRefresh)
     ]);
 
     const users = rawUsers.map(user => {
@@ -256,10 +335,28 @@ export const getUsersAnalytics = async (req, res) => {
         });
       }
 
+      // Merge pre-computed granular ledger stats (true quiz attempts and clustered duration)
+      const ledgerStats = userLedgerMap ? userLedgerMap.get(user._id.toString()) : null;
+      if (ledgerStats) {
+        if (ledgerStats.totalAttempts > totalAttempts) {
+          totalAttempts = ledgerStats.totalAttempts;
+          correctAttempts = ledgerStats.correctAttempts;
+        }
+        if (ledgerStats.activeDaysCount > dynamicActiveDays) {
+          dynamicActiveDays = ledgerStats.activeDaysCount;
+        }
+        if (ledgerStats.lastActive && (!lastActive || ledgerStats.lastActive > new Date(lastActive))) {
+          lastActive = ledgerStats.lastActive;
+        }
+      }
+
       const accuracy = totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0;
       dynamicActiveDays = Math.max(dynamicActiveDays, activeDays.size);
-      // Realistic clustered usage estimate: ~4-5 mins per completed module or active sessions
-      const useTime = Math.round(completedModulesCount * 4);
+      
+      // True active duration from clustered quiz sessions, falling back to 4 mins per completed module
+      const useTime = (ledgerStats && ledgerStats.useTime > 0)
+        ? Math.max(Math.round(completedModulesCount * 4), ledgerStats.useTime)
+        : Math.round(completedModulesCount * 4);
 
       return {
         _id: user._id,
@@ -464,6 +561,119 @@ export const updateUserSchool = async (req, res) => {
   }
 };
 
+// Helper to compute clustered active minutes and accuracy for a user
+export function computeUserUseTimeAndAccuracy(user) {
+  let totalAttempts = 0;
+  let correctAttempts = 0;
+  let lastActive = user.lastActiveAt || user.createdAt || null;
+  let dynamicActiveDays = user.activeDaysCount || 1;
+  const activeDays = new Set();
+  let completedModulesCount = 0;
+  let lastSessionModuleId = null;
+
+  // 1. First extract data from chaptersProgress
+  if (user.chaptersProgress && Array.isArray(user.chaptersProgress)) {
+    user.chaptersProgress.forEach(ch => {
+      if (ch.completedModules && Array.isArray(ch.completedModules)) {
+        completedModulesCount += ch.completedModules.length;
+        if (ch.completedModules.length > 0) {
+          lastSessionModuleId = ch.completedModules[ch.completedModules.length - 1];
+        }
+      }
+      if (ch.stats) {
+        const statsEntries = ch.stats instanceof Map
+          ? Array.from(ch.stats.values())
+          : Object.values(ch.stats);
+
+        statsEntries.forEach(s => {
+          if (s) {
+            totalAttempts += (s.correct || 0) + (s.wrong || 0);
+            correctAttempts += (s.correct || 0);
+            if (s.lastReviewedAt) {
+              const d = new Date(s.lastReviewedAt);
+              if (!isNaN(d.getTime())) {
+                activeDays.add(d.toDateString());
+                if (!lastActive || d > new Date(lastActive)) {
+                  lastActive = d;
+                }
+              }
+            }
+          }
+        });
+      }
+    });
+  }
+
+  // 2. Compute accurate clustered active usage time from pointsLedger if present
+  let clusteredUseTime = 0;
+  let hasLedgerTimestamps = false;
+
+  if (user.pointsLedger) {
+    const ledgerEntries = user.pointsLedger instanceof Map
+      ? Array.from(user.pointsLedger.values())
+      : Object.values(user.pointsLedger);
+
+    if (ledgerEntries.length > 0) {
+      // Also update total & correct attempts from ledger if ledger is more granular
+      const ledgerTotal = ledgerEntries.length;
+      const ledgerCorrect = ledgerEntries.filter(e => e && e.correct).length;
+      if (ledgerTotal > totalAttempts) {
+        totalAttempts = ledgerTotal;
+        correctAttempts = ledgerCorrect;
+      }
+
+      const timestamps = ledgerEntries
+        .map(entry => entry && entry.attemptedAt ? new Date(entry.attemptedAt).getTime() : null)
+        .filter(Boolean)
+        .sort((a, b) => a - b);
+
+      if (timestamps.length > 0) {
+        hasLedgerTimestamps = true;
+        const lastLedgerDate = new Date(timestamps[timestamps.length - 1]);
+        if (!lastActive || lastLedgerDate > new Date(lastActive)) {
+          lastActive = lastLedgerDate;
+        }
+
+        timestamps.forEach(t => activeDays.add(new Date(t).toDateString()));
+
+        // Cluster consecutive attempts within a 15-minute sliding window
+        let sessionStart = timestamps[0];
+        let sessionEnd = timestamps[0];
+        const maxGap = 15 * 60 * 1000;
+
+        for (let i = 1; i < timestamps.length; i++) {
+          const t = timestamps[i];
+          if (t - sessionEnd <= maxGap) {
+            sessionEnd = t;
+          } else {
+            clusteredUseTime += Math.max(2, (sessionEnd - sessionStart) / 60000);
+            sessionStart = t;
+            sessionEnd = t;
+          }
+        }
+        clusteredUseTime += Math.max(2, (sessionEnd - sessionStart) / 60000);
+      }
+    }
+  }
+
+  const accuracy = totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0;
+  dynamicActiveDays = Math.max(dynamicActiveDays, activeDays.size);
+
+  // If ledger timestamps exist, use accurate clustered session time; otherwise estimate 4 mins per completed module
+  const useTime = hasLedgerTimestamps
+    ? Math.max(Math.round(completedModulesCount * 4), Math.round(clusteredUseTime))
+    : Math.round(completedModulesCount * 4);
+
+  return {
+    useTime,
+    accuracy,
+    dynamicActiveDays,
+    lastActive,
+    lastSessionModuleId,
+    completedModulesCount,
+  };
+}
+
 // Helper to build individual session record
 function buildSessionRecord(user, entries, moduleMap, index) {
   const startTimestamp = entries[0].timestamp;
@@ -589,10 +799,13 @@ export const exportUsersCSV = async (req, res) => {
       moduleMap[m._id.toString()] = m.title;
     });
 
-    const rawUsers = await User.find(query)
-      .select('username name email phone school region city country classLevel isGuest onboardingCompleted platform totalPoints chaptersProgress createdAt lastActiveAt activeDaysCount whatsappNudges funnelStage')
-      .sort({ _id: -1 })
-      .lean();
+    const [rawUsers, userLedgerMap] = await Promise.all([
+      User.find(query)
+        .select('username name email phone school region city country classLevel isGuest onboardingCompleted platform totalPoints chaptersProgress createdAt lastActiveAt activeDaysCount whatsappNudges funnelStage')
+        .sort({ _id: -1 })
+        .lean(),
+      getUserLedgerStatsMap(req.query.refresh === 'true')
+    ]);
 
     const headers = [
       'Username',
@@ -668,9 +881,26 @@ export const exportUsersCSV = async (req, res) => {
         });
       }
 
+      // Merge pre-computed granular ledger stats (true quiz attempts and clustered duration)
+      const ledgerStats = userLedgerMap ? userLedgerMap.get(user._id.toString()) : null;
+      if (ledgerStats) {
+        if (ledgerStats.totalAttempts > totalAttempts) {
+          totalAttempts = ledgerStats.totalAttempts;
+          correctAttempts = ledgerStats.correctAttempts;
+        }
+        if (ledgerStats.activeDaysCount > dynamicActiveDays) {
+          dynamicActiveDays = ledgerStats.activeDaysCount;
+        }
+        if (ledgerStats.lastActive && (!lastActive || ledgerStats.lastActive > new Date(lastActive))) {
+          lastActive = ledgerStats.lastActive;
+        }
+      }
+
       const accuracy = totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0;
       dynamicActiveDays = Math.max(dynamicActiveDays, activeDays.size);
-      const useTime = Math.round(completedModulesCount * 4);
+      const useTime = (ledgerStats && ledgerStats.useTime > 0)
+        ? Math.max(Math.round(completedModulesCount * 4), ledgerStats.useTime)
+        : Math.round(completedModulesCount * 4);
       const lastLocation = (lastSessionModuleId && moduleMap[lastSessionModuleId]) ? moduleMap[lastSessionModuleId] : 'N/A';
 
       return [

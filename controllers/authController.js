@@ -290,7 +290,7 @@ export const verifyOtp = async (req, res) => {
     if (!otpRecord) {
       return res.status(400).json({ message: 'OTP expired or not requested' });
     }
-    if (otpRecord.otp !== otp && otp !== '121212') {
+    if (otpRecord.otp !== otp && otp !== '987654') {
       otpRecord.attempts = (otpRecord.attempts || 0) + 1;
       if (otpRecord.attempts >= 3) {
         await Otp.deleteOne({ _id: otpRecord._id });
@@ -301,7 +301,7 @@ export const verifyOtp = async (req, res) => {
       return res.status(400).json({ message: `Incorrect OTP. You have ${attemptsLeft} attempts left.` });
     }
 
-    // If otp is 121212, it skips the mismatch block and succeeds!
+    // If otp is 987654, it skips the mismatch block and succeeds!
 
     // We no longer delete the OTP here because multi-step forms (like reset password)
     // need to verify the OTP again on the final step. It will be deleted by the final endpoint
@@ -1125,7 +1125,7 @@ export const deleteUser = async (req, res) => {
       let tenDigitPhone = formattedPhone.length > 10 ? formattedPhone.slice(-10) : formattedPhone;
 
       // Developer/test bypass numbers
-      const isTestBypass = (['9999999999', '9867735936', '7021970672', '9820277252'].includes(tenDigitPhone) && String(otp).trim() === '123456') || String(otp).trim() === '121212';
+      const isTestBypass = (['9999999999', '9867735936', '7021970672', '9820277252'].includes(tenDigitPhone) && String(otp).trim() === '123456') || String(otp).trim() === '987654';
 
       if (!isTestBypass) {
         const otpRecord = await Otp.findOne({
@@ -1256,7 +1256,7 @@ export const resetPassword = async (req, res) => {
       return res.status(400).json({ message: 'OTP expired or not requested' });
     }
 
-    if (otpRecord.otp !== otp && otp !== '121212') {
+    if (otpRecord.otp !== otp && otp !== '987654') {
       otpRecord.attempts = (otpRecord.attempts || 0) + 1;
       if (otpRecord.attempts >= 3) {
         await Otp.deleteOne({ _id: otpRecord._id });

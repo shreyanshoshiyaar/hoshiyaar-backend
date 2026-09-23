@@ -16,6 +16,7 @@ import adminRoutes from './routes/adminRoutes.js';
 import trackRoutes from './routes/trackRoutes.js';
 import whatsappRoutes from './routes/whatsappRoutes.js';
 import sitemapRoutes from './routes/sitemap.js';
+import paymentRoutes from './routes/paymentRoutes.js';
 import Subject from './models/Subject.js';
 import ClassLevel from './models/ClassLevel.js';
 import User from './models/User.js';
@@ -198,6 +199,14 @@ app.use('/api/blogs', blogRoutes);
 // Settings routes
 app.use('/api/settings', settingsRoutes);
 app.use('/api/admin', adminRoutes);
+
+// Payments & Subscriptions routes
+import { createOrder, verifyPayment } from './controllers/paymentController.js';
+import { optionalAuth } from './middleware/authMiddleware.js';
+
+app.use('/api/payments', paymentRoutes);
+app.post('/api/create-order', optionalAuth, createOrder);
+app.post('/api/verify-payment', optionalAuth, verifyPayment);
 
 // Notification click tracking (no auth required)
 app.use('/api/track', trackRoutes);

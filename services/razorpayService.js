@@ -22,13 +22,17 @@ class RazorpayService {
     const envKeyId = process.env.RAZORPAY_KEY_ID?.trim();
     const envKeySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
 
-    const keyId = config.razorpay?.keyId || envKeyId;
-    const keySecret = config.razorpay?.keySecret || envKeySecret;
+    // ENV vars always take priority over DB-stored keys.
+    // This ensures deploying new live keys in .env immediately takes effect
+    // without needing to clear DB config.
+    const keyId = envKeyId || config.razorpay?.keyId;
+    const keySecret = envKeySecret || config.razorpay?.keySecret;
 
     const hasValidKeys = Boolean(keyId && keySecret && keyId !== 'rzp_test_mock_mode');
 
-    // If valid keys exist in .env or config, and mockMode is not strictly forced without env keys
-    const mockMode = !hasValidKeys || (config.razorpay?.mockMode === true && !envKeyId);
+    // If live env keys are present, always use live mode (never mock),
+    // regardless of the DB mockMode toggle.
+    const mockMode = !hasValidKeys || (!envKeyId && config.razorpay?.mockMode === true);
 
     if (!mockMode && hasValidKeys) {
       return {

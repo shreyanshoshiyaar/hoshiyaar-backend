@@ -34,7 +34,7 @@ export const admin = (req, res, next) => {
   }
 
   const cleanPhone = String(req.user.phone || '').replace(/\D/g, '');
-  const isSuperAdmin = ['9867735936', '7021970672', '9820277252'].some(p => cleanPhone.endsWith(p)) ||
+  const isSuperAdmin = ['9867735936', '7021970672', '9820277252', '8310532323'].some(p => cleanPhone.endsWith(p)) ||
     ['Host', 'hostcbse', 'AKSHITRAVULA', 'AKSHIT', 'SB10', 'Nidhi sekhri'].includes(req.user.username);
 
   if (req.user.role === 'admin' || req.user.role === 'master' || isSuperAdmin) {

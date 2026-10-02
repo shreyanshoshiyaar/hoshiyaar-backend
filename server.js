@@ -20,7 +20,7 @@ import paymentRoutes from './routes/paymentRoutes.js';
 import Subject from './models/Subject.js';
 import ClassLevel from './models/ClassLevel.js';
 import User from './models/User.js';
-import { initFirebase, startInactivityCron, startDailyMassNotificationCron, startStreakRiskNotificationCron, startLeaderboardRankCheckCron, startChapterSpecificNotificationCron, startExamModeLiveNotificationCron, startWeeklyGoalResetCron, syncOutdatedWeeklyGoals } from './services/notificationService.js';
+import { initFirebase, startInactivityCron, startDailyMassNotificationCron, startStreakRiskNotificationCron, startLeaderboardRankCheckCron, startChapterSpecificNotificationCron, startExamModeLiveNotificationCron, startWeeklyGoalResetCron, syncOutdatedWeeklyGoals, startHomeworkDeadlineReminderCron, startTeacherDailySummaryCron } from './services/notificationService.js';
 import { startWhatsappNudgeCron } from './services/whatsappNudgeCron.js';
 
 // Load environment variables from .env file
@@ -67,6 +67,12 @@ startLeaderboardRankCheckCron();
 
 // Start the Weekly Challenge Reset Cron Job (Every Monday 00:00 IST)
 startWeeklyGoalResetCron();
+
+// Start the Hourly Homework Deadline & Reminder Cron Job
+startHomeworkDeadlineReminderCron();
+
+// Start the End-of-Day Teacher Daily Summary Cron Job (Daily 8:30 PM IST)
+startTeacherDailySummaryCron();
 
 const app = express();
 
@@ -221,6 +227,12 @@ app.use('/api/ai', aiRoutes);
 
 // WhatsApp Webhook routes
 app.use('/api/whatsapp', whatsappRoutes);
+
+// Teacher Mode & Classroom B2B routes
+import teacherRoutes from './routes/teacherRoutes.js';
+import studentClassroomRoutes from './routes/studentClassroomRoutes.js';
+app.use('/api/teacher', teacherRoutes);
+app.use('/api/student/classrooms', studentClassroomRoutes);
 
 // Dynamic Sitemap Route
 app.use('/sitemap.xml', sitemapRoutes);

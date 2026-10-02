@@ -8,6 +8,10 @@ import CurriculumItem from '../models/CurriculumItem.js';
 import Unit from '../models/Unit.js';
 import DefaultRevisionQuestion from '../models/DefaultRevisionQuestion.js';
 import SystemSettings from '../models/SystemSettings.js';
+import PaymentConfig from '../models/PaymentConfig.js';
+import UserSubscription from '../models/UserSubscription.js';
+import Classroom from '../models/Classroom.js';
+import Assignment from '../models/Assignment.js';
 
 // Map board aliases so virtual boards like RBSE reuse CBSE content seamlessly
 const resolveBoardName = (boardName) => {
@@ -370,7 +374,7 @@ export const getExamAvailableChapters = async (req, res) => {
 
     const chapters = await Chapter.find(
       { _id: { $in: validChapterIds }, isPublished: { $ne: false } },
-      'title order subjectId'
+      'title order subjectId freeLessonsCount lessonPrice chapterPrice'
     )
       .populate({
         path: 'subjectId',
@@ -391,10 +395,95 @@ export const getExamAvailableChapters = async (req, res) => {
       return (a.order || 0) - (b.order || 0);
     });
 
+    // Check user entitlements if user is logged in
+    const user = req.user;
+    let config = await PaymentConfig.findOne({ singletonKey: 'default' }).lean();
+    if (!config) config = { paywallEnabled: false, subscriptionMode: 'admin_only', defaultChapterPrice: 50 };
+
+    const isPaywallDisabled = !config.paywallEnabled || config.subscriptionMode === 'disabled';
+
+    const cleanPhone = String(user?.phone || '').replace(/\D/g, '');
+    const adminPhones = ['9867735936', '7021970672', '9820277252', '8310532323'];
+    const adminUsernames = ['Host', 'hostcbse', 'AKSHITRAVULA', 'AKSHIT', 'SB10', 'Nidhi sekhri'];
+    const isAdminUser = user && (
+      user.role === 'admin' ||
+      user.role === 'master' ||
+      (user.username && adminUsernames.includes(user.username)) ||
+      adminPhones.some(p => cleanPhone.endsWith(p))
+    );
+
+    const isStudentOpenAccess = (config.subscriptionMode || 'admin_only') === 'admin_only' && !isAdminUser;
+
+    let userSub = null;
+    if (user?._id) {
+      userSub = await UserSubscription.findOne({ userId: user._id }).lean();
+    }
+
+    const hasActiveSubscriptionPass = userSub && 
+      (userSub.status === 'active_subscription' || userSub.status === 'canceled') &&
+      userSub.currentPeriodEnd &&
+      new Date(userSub.currentPeriodEnd) > new Date();
+
+    const isControlFreeGroup = userSub?.assignedVariant === 'control_free' || 
+      userSub?.assignedVariant === 'free' ||
+      config.abTesting?.freeUsers?.some(id => String(id) === String(user?._id)) ||
+      Boolean(cleanPhone && config.abTesting?.freePhones?.some(p => cleanPhone.endsWith(String(p).replace(/\D/g, ''))));
+
+    // Check active homework assignments for free chapter access
+    const homeworkFreeChapterIds = new Set();
+    if (config.freeAccessForActiveHomework !== false && user?._id) {
+      try {
+        const studentClassrooms = await Classroom.find({ students: user._id, isActive: true }).select('_id').lean();
+        if (studentClassrooms.length > 0) {
+          const cIds = studentClassrooms.map(c => c._id);
+          const activeAssignments = await Assignment.find({
+            classroomId: { $in: cIds },
+            status: 'active',
+            dueDate: { $gt: new Date() }
+          }).lean();
+
+          for (const a of activeAssignments) {
+            if (a.chapterId) homeworkFreeChapterIds.add(String(a.chapterId));
+            if (a.chapterTitle) {
+              const matchedCh = chapters.find(c => c.title && c.title.trim().toLowerCase() === a.chapterTitle.trim().toLowerCase());
+              if (matchedCh) homeworkFreeChapterIds.add(String(matchedCh._id));
+            }
+          }
+        }
+      } catch (hwErr) {
+        console.warn('Error checking homework chapters for exam list:', hwErr);
+      }
+    }
+
+    const enrichedChapters = chapters.map(ch => {
+      const chIdStr = ch._id.toString();
+      let isLocked = true;
+      let expiresAt = null;
+
+      if (isPaywallDisabled || isStudentOpenAccess || isAdminUser || hasActiveSubscriptionPass || isControlFreeGroup || homeworkFreeChapterIds.has(chIdStr)) {
+        isLocked = false;
+      } else if (userSub?.purchasedChapters?.length) {
+        const match = userSub.purchasedChapters.find(p => 
+          String(p.chapterId) === chIdStr && new Date(p.expiresAt) > new Date()
+        );
+        if (match) {
+          isLocked = false;
+          expiresAt = match.expiresAt;
+        }
+      }
+
+      return {
+        ...ch,
+        isLocked,
+        expiresAt,
+        chapterPrice: ch.chapterPrice != null ? ch.chapterPrice : (ch.lessonPrice != null ? ch.lessonPrice : (config.defaultChapterPrice || 50))
+      };
+    });
+
     res.json({
       success: true,
-      chapterIds: chapters.map(c => c._id.toString()),
-      chapters
+      chapterIds: enrichedChapters.map(c => c._id.toString()),
+      chapters: enrichedChapters
     });
   } catch (error) {
     console.error('Error fetching exam available chapters:', error);
@@ -448,7 +537,18 @@ export const listChapters = async (req, res) => {
     // Find class if specified
     let cls;
     if (classTitle) {
-      cls = await ClassLevel.findOne({ boardId: b._id, name: String(classTitle) });
+      const cleanClassStr = String(classTitle).trim();
+      const numOnly = cleanClassStr.replace(/\D/g, '');
+      const possibleClassNames = [cleanClassStr];
+      if (numOnly) {
+        possibleClassNames.push(numOnly);
+        possibleClassNames.push(`Class ${numOnly}`);
+        possibleClassNames.push(`Grade ${numOnly}`);
+      }
+      cls = await ClassLevel.findOne({
+        boardId: b._id,
+        name: { $in: possibleClassNames }
+      });
       if (!cls) {
         console.log(`[Curriculum] Class '${classTitle}' not found for board '${board}'`);
         return res.json([]);
@@ -456,27 +556,25 @@ export const listChapters = async (req, res) => {
       console.log(`[Curriculum] Found class:`, cls.name);
     }
 
-    // Find subject with more flexible matching
-    let s = await Subject.findOne({
-      boardId: b._id,
-      name: subject,
-      ...(cls ? { classId: cls._id } : {})
-    });
-
-    // If not found, try without class constraint
-    if (!s && cls) {
-      s = await Subject.findOne({ boardId: b._id, name: subject });
-      console.log(`[Curriculum] Subject found without class constraint:`, s ? s.name : 'none');
-    }
-
-    // If still not found, try case-insensitive search
-    if (!s) {
+    // Find subject strictly within class if class specified
+    let s;
+    if (cls) {
       s = await Subject.findOne({
         boardId: b._id,
-        name: { $regex: new RegExp(`^${subject}$`, 'i') },
-        ...(cls ? { classId: cls._id } : {})
+        classId: cls._id,
+        $or: [
+          { name: subject },
+          { name: { $regex: new RegExp(`^${subject}$`, 'i') } }
+        ]
       });
-      console.log(`[Curriculum] Subject found with case-insensitive search:`, s ? s.name : 'none');
+    } else {
+      s = await Subject.findOne({
+        boardId: b._id,
+        $or: [
+          { name: subject },
+          { name: { $regex: new RegExp(`^${subject}$`, 'i') } }
+        ]
+      });
     }
 
     if (!s) {
@@ -652,7 +750,7 @@ export const listModules = async (req, res) => {
     }
 
     const filter = unitId ? { unitId } : { chapterId };
-    const modules = await Module.find(filter).sort({ order: 1 });
+    const modules = await Module.find(filter).populate('unitId', 'title order').sort({ order: 1 });
     return res.json(modules);
   } catch (err) {
     return res.status(500).json({ message: 'Server Error' });

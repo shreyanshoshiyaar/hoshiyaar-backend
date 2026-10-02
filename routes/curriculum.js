@@ -9,7 +9,7 @@ router.post('/import', importCurriculum);
 router.get('/boards', listBoards);
 router.get('/classes', listClasses);
 router.get('/subjects', listSubjects);
-router.get('/exam-chapters', getExamAvailableChapters);
+router.get('/exam-chapters', optionalAuth, getExamAvailableChapters);
 router.get('/chapters', optionalAuth, listChapters);
 router.patch('/chapters/:id/publish', protect, admin, toggleChapterPublishStatus);
 router.get('/units', cacheResponse(900), listUnits);

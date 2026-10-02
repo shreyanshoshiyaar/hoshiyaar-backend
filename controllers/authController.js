@@ -138,7 +138,7 @@ export const sendOtp = async (req, res) => {
 
   // --- TEST USER BYPASS ---
   // Allow test numbers to bypass OTP sending so you can test the signup flow anytime
-  if (['9999999999', '9867735936', '7021970672', '9820277252'].includes(phone)) {
+  if (['9999999999', '9867735936', '7021970672', '9820277252', '8310532323'].includes(phone)) {
     return res.status(200).json({ message: 'OTP sent successfully via WhatsApp' });
   }
   // ------------------------
@@ -279,7 +279,7 @@ export const verifyOtp = async (req, res) => {
 
   // --- TEST USER BYPASS ---
   // Allow test numbers to bypass OTP verification
-  if (['9999999999', '9867735936', '7021970672', '9820277252'].includes(phone) && otp === '123456') {
+  if (['9999999999', '9867735936', '7021970672', '9820277252', '8310532323'].includes(phone) && otp === '123456') {
     return res.status(200).json({ message: 'OTP verified successfully' });
   }
   // ------------------------
@@ -566,7 +566,7 @@ export const loginUser = async (req, res) => {
       if (req.body.country) user.country = req.body.country;
       
       const cleanPhone = String(user.phone || '').replace(/\D/g, '');
-      const isSuperAdmin = ['9867735936', '7021970672', '9820277252'].some(p => cleanPhone.endsWith(p)) ||
+      const isSuperAdmin = ['9867735936', '7021970672', '9820277252', '8310532323'].some(p => cleanPhone.endsWith(p)) ||
         ['Host', 'hostcbse', 'AKSHITRAVULA', 'AKSHIT', 'SB10', 'Nidhi sekhri'].includes(user.username);
       if (isSuperAdmin && user.role !== 'admin') {
         user.role = 'admin';
@@ -624,7 +624,7 @@ export const getUser = async (req, res) => {
     }
 
     const cleanPhone = String(user.phone || '').replace(/\D/g, '');
-    const isSuperAdmin = ['9867735936', '7021970672', '9820277252'].some(p => cleanPhone.endsWith(p)) ||
+    const isSuperAdmin = ['9867735936', '7021970672', '9820277252', '8310532323'].some(p => cleanPhone.endsWith(p)) ||
       ['Host', 'hostcbse', 'AKSHITRAVULA', 'AKSHIT', 'SB10', 'Nidhi sekhri'].includes(user.username);
     res.json({
       _id: user._id,
@@ -837,6 +837,48 @@ export const getModuleProgress = async (req, res) => {
   }
 };
 
+// Helper to check if a completed module completes an assignment for the student
+const checkAndTriggerHomeworkCompletion = async (userId, completedModuleId, chaptersProgress) => {
+  try {
+    const Assignment = (await import('../models/Assignment.js')).default;
+    const { sendHomeworkCompletedNotifications } = await import('../services/notificationService.js');
+    const user = await User.findById(userId).select('enrolledClassrooms').lean();
+    if (!user || !Array.isArray(user.enrolledClassrooms) || !user.enrolledClassrooms.length) return;
+
+    const modStr = String(completedModuleId);
+    const assignments = await Assignment.find({
+      classroomId: { $in: user.enrolledClassrooms },
+      status: 'active',
+      'targetLessons.moduleId': { $in: [modStr, Number(modStr) || modStr] },
+    }).lean();
+
+    if (!assignments || !assignments.length) return;
+
+    // Collect all completed module IDs from student's chaptersProgress
+    const completedSet = new Set();
+    if (Array.isArray(chaptersProgress)) {
+      chaptersProgress.forEach(cp => {
+        if (Array.isArray(cp.completedModules)) {
+          cp.completedModules.forEach(mid => completedSet.add(String(mid)));
+        }
+      });
+    }
+
+    for (const assignment of assignments) {
+      const targetIds = (assignment.targetLessons || []).map(l => String(l.moduleId));
+      const allCompleted = targetIds.length > 0 && targetIds.every(mid => completedSet.has(mid));
+      if (allCompleted) {
+        await sendHomeworkCompletedNotifications({
+          studentId: userId,
+          assignmentId: assignment._id,
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Error checking homework completion notifications:', err);
+  }
+};
+
 // @desc    Update chapter progress
 // @route   PUT /api/auth/progress
 export const updateProgress = async (req, res) => {
@@ -964,6 +1006,13 @@ export const updateProgress = async (req, res) => {
     }
 
     await user.save();
+
+    // Check if this newly completed module completes an active homework assignment
+    if (isNewlyCompleted && Array.isArray(user.enrolledClassrooms) && user.enrolledClassrooms.length > 0) {
+      checkAndTriggerHomeworkCompletion(user._id, actualModuleId, user.chaptersProgress).catch(err => {
+        console.error('Homework completion trigger error:', err.message);
+      });
+    }
     
     // Log the final state to verify database storage
     console.log(`[Progress] Successfully saved progress to database for user ${userId}:`, {
@@ -1125,7 +1174,7 @@ export const deleteUser = async (req, res) => {
       let tenDigitPhone = formattedPhone.length > 10 ? formattedPhone.slice(-10) : formattedPhone;
 
       // Developer/test bypass numbers
-      const isTestBypass = (['9999999999', '9867735936', '7021970672', '9820277252'].includes(tenDigitPhone) && String(otp).trim() === '123456') || String(otp).trim() === '987654';
+      const isTestBypass = (['9999999999', '9867735936', '7021970672', '9820277252', '8310532323'].includes(tenDigitPhone) && String(otp).trim() === '123456') || String(otp).trim() === '987654';
 
       if (!isTestBypass) {
         const otpRecord = await Otp.findOne({

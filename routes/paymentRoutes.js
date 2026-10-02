@@ -15,7 +15,11 @@ import {
   savePlan,
   getTransactions,
   exportTransactionsCSV,
-  getSubscriptions
+  getSubscriptions,
+  getChapterPaymentSettings,
+  updateChapterPaymentSettings,
+  searchAbTestUsers,
+  toggleAbTestUser
 } from '../controllers/adminPaymentController.js';
 import { protect, admin, optionalAuth } from '../middleware/authMiddleware.js';
 
@@ -36,6 +40,10 @@ router.post('/reactivate-subscription', protect, reactivateSubscription);
 router.get('/admin/settings', protect, admin, getPaymentSettings);
 router.put('/admin/settings', protect, admin, updatePaymentSettings);
 router.post('/admin/plans', protect, admin, savePlan);
+router.get('/admin/chapter-settings', protect, admin, getChapterPaymentSettings);
+router.put('/admin/chapter-settings/:chapterId', protect, admin, updateChapterPaymentSettings);
+router.get('/admin/abtest/users', protect, admin, searchAbTestUsers);
+router.post('/admin/abtest/toggle-user', protect, admin, toggleAbTestUser);
 router.get('/admin/transactions', protect, admin, getTransactions);
 router.get('/admin/transactions/export-csv', protect, admin, exportTransactionsCSV);
 router.get('/admin/subscriptions', protect, admin, getSubscriptions);

@@ -6,13 +6,13 @@ const SubscriptionPlanSchema = new mongoose.Schema({
   description: { type: String },
   type: { 
     type: String, 
-    enum: ['subscription', 'pay_per_lesson', 'custom'], 
-    default: 'subscription' 
+    enum: ['subscription', 'pay_per_lesson', 'pay_per_chapter', 'custom'], 
+    default: 'pay_per_chapter' 
   },
   billingCycle: { 
     type: String, 
-    enum: ['monthly', 'annual', 'one_time', 'per_lesson'], 
-    default: 'monthly' 
+    enum: ['monthly', 'annual', 'one_time', 'per_lesson', 'per_chapter'], 
+    default: 'annual' 
   },
   amount: { type: Number, required: true }, // In Rupees (e.g. 299)
   discountedFrom: { type: Number, default: 0 }, // In Rupees (e.g. 499)

@@ -2,6 +2,8 @@ import admin from 'firebase-admin';
 import User from '../models/User.js';
 import SystemSettings from '../models/SystemSettings.js';
 import ClassLevel from '../models/ClassLevel.js';
+import Classroom from '../models/Classroom.js';
+import Assignment from '../models/Assignment.js';
 import cron from 'node-cron';
 import { getCurrentMondayIST } from '../controllers/authController.js';
 import { readFileSync } from 'fs';
@@ -9,6 +11,9 @@ import path from 'path';
 
 // Initialize Firebase Admin
 export const initFirebase = () => {
+  if (admin.apps && admin.apps.length > 0) {
+    return admin.app();
+  }
   try {
     let serviceAccount;
 
@@ -36,16 +41,28 @@ export const initFirebase = () => {
 
 // Function to send a notification to a specific user
 export const sendPushNotification = async (token, title, body, data = {}) => {
-  if (!token) return;
+  if (!token || typeof token !== 'string' || token.length < 10) return;
+  if (!admin.apps || admin.apps.length === 0) {
+    console.warn('⚠️ Firebase Admin not initialized. Skipping single push.');
+    return;
+  }
+
+  // FCM data must only have string values
+  const stringifiedData = {};
+  for (const [k, v] of Object.entries(data || {})) {
+    stringifiedData[k] = String(v ?? '');
+  }
 
   const message = {
     notification: { title, body },
-    data: data,
+    data: stringifiedData,
     token: token,
     android: {
       priority: 'high',
       notification: {
         channelId: 'study_reminders',
+        defaultSound: true,
+        defaultVibrateTimings: true,
       }
     }
   };
@@ -54,11 +71,122 @@ export const sendPushNotification = async (token, title, body, data = {}) => {
     const response = await admin.messaging().send(message);
     return response;
   } catch (error) {
-    console.error('Error sending FCM message:', error);
-    if (error.code === 'messaging/registration-token-not-registered') {
+    console.error('Error sending FCM message:', error.message || error);
+    if (error.code === 'messaging/registration-token-not-registered' || error.code === 'messaging/invalid-registration-token') {
       // Clean up invalid tokens
       await User.updateOne({ fcmToken: token }, { $set: { fcmToken: null } });
     }
+  }
+};
+
+// Helper to send multicast push notifications to multiple tokens in 500-sized chunks
+export const sendMulticastPushNotification = async ({ tokens, title, body, data = {} }) => {
+  if (!tokens || !tokens.length) return { successCount: 0, failureCount: 0 };
+  if (!admin.apps || admin.apps.length === 0) {
+    console.warn('⚠️ Firebase Admin not initialized. Skipping multicast push.');
+    return { successCount: 0, failureCount: 0 };
+  }
+
+  const validTokens = Array.from(new Set(tokens.filter(t => t && typeof t === 'string' && t.length > 10)));
+  if (!validTokens.length) return { successCount: 0, failureCount: 0 };
+
+  const stringifiedData = {};
+  for (const [k, v] of Object.entries(data || {})) {
+    stringifiedData[k] = String(v ?? '');
+  }
+
+  const messages = validTokens.map(token => ({
+    notification: { title, body },
+    data: stringifiedData,
+    token,
+    android: {
+      priority: 'high',
+      notification: {
+        channelId: 'study_reminders',
+        defaultSound: true,
+        defaultVibrateTimings: true,
+      }
+    }
+  }));
+
+  const batches = [];
+  for (let i = 0; i < messages.length; i += 500) {
+    batches.push(messages.slice(i, i + 500));
+  }
+
+  let totalSuccess = 0;
+  let totalFail = 0;
+  const failedTokens = [];
+
+  for (const batch of batches) {
+    try {
+      const response = await admin.messaging().sendEach(batch);
+      totalSuccess += response.successCount;
+      totalFail += response.failureCount;
+
+      if (response.failureCount > 0) {
+        response.responses.forEach((resp, idx) => {
+          if (!resp.success) {
+            const errCode = resp.error?.code;
+            if (errCode === 'messaging/registration-token-not-registered' || errCode === 'messaging/invalid-registration-token') {
+              failedTokens.push(batch[idx].token);
+            }
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Error sending multicast batch:', err);
+    }
+  }
+
+  if (failedTokens.length > 0) {
+    try {
+      await User.updateMany(
+        { fcmToken: { $in: failedTokens } },
+        { $set: { fcmToken: null } }
+      );
+    } catch (e) {
+      console.error('Failed to cleanup invalid tokens:', e);
+    }
+  }
+
+  return { successCount: totalSuccess, failureCount: totalFail };
+};
+
+// Friendly IST date/time formatter for push notification messages
+export const formatDueDateForNotification = (dateVal) => {
+  if (!dateVal) return '';
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return '';
+
+  const now = new Date();
+  const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const istTarget = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+
+  const timeStr = istTarget.toLocaleTimeString('en-IN', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  const nowDay = new Date(istNow.getFullYear(), istNow.getMonth(), istNow.getDate());
+  const targetDay = new Date(istTarget.getFullYear(), istTarget.getMonth(), istTarget.getDate());
+  const dateDiffDays = Math.round((targetDay - nowDay) / (24 * 60 * 60 * 1000));
+
+  if (dateDiffDays === 0) {
+    return `today at ${timeStr}`;
+  } else if (dateDiffDays === 1) {
+    return `tomorrow at ${timeStr}`;
+  } else if (dateDiffDays === -1) {
+    return `yesterday at ${timeStr}`;
+  } else {
+    return istTarget.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
   }
 };
 
@@ -923,5 +1051,485 @@ export const syncOutdatedWeeklyGoals = async () => {
   } catch (err) {
     console.error('Error syncing outdated weekly challenges on startup:', err.message);
   }
+};
+
+// =========================================================================
+// CLASSROOM & HOMEWORK NOTIFICATIONS & AUTOMATED CRONS
+// =========================================================================
+
+/**
+ * 1. Notify individual student when added to a classroom
+ */
+export const sendClassroomEnrolledNotification = async ({ studentId, classroom, teacherName }) => {
+  try {
+    if (!studentId || !classroom) return;
+    const student = await User.findById(studentId).select('name username fcmToken').lean();
+    if (!student || !student.fcmToken) return;
+
+    const teacher = teacherName || classroom.teacherId?.name || classroom.teacherId?.username || 'Your Teacher';
+    const title = `🏫 Added to ${classroom.name}!`;
+    const body = `${teacher} added you to ${classroom.name} (${classroom.subject || 'Science'}). Tap to view your classroom & homework!`;
+
+    await sendPushNotification(
+      student.fcmToken,
+      title,
+      body,
+      {
+        url: '/homework',
+        type: 'classroom_enrolled',
+        classroomId: classroom._id.toString(),
+      }
+    );
+    console.log(`📢 Sent classroom enrolled push to ${student.name || student.username}`);
+  } catch (err) {
+    console.error('Error sending classroom enrolled notification:', err);
+  }
+};
+
+/**
+ * 2. Notify multiple students bulk-enrolled into a classroom
+ */
+export const sendClassroomBulkEnrolledNotifications = async ({ studentIds, classroom, teacherName }) => {
+  try {
+    if (!studentIds || !studentIds.length || !classroom) return;
+    const students = await User.find(
+      { _id: { $in: studentIds }, fcmToken: { $ne: null } },
+      'name username fcmToken'
+    ).lean();
+
+    const tokens = students.map(s => s.fcmToken).filter(t => t && t.length > 10);
+    if (!tokens.length) return;
+
+    const teacher = teacherName || 'Your Teacher';
+    const title = `🏫 Added to ${classroom.name}!`;
+    const body = `${teacher} added you to ${classroom.name} (${classroom.subject || 'Science'})! Check your classroom & homework missions.`;
+
+    await sendMulticastPushNotification({
+      tokens,
+      title,
+      body,
+      data: {
+        url: '/homework',
+        type: 'classroom_enrolled',
+        classroomId: classroom._id.toString(),
+      }
+    });
+    console.log(`📢 Sent bulk classroom enrolled push to ${tokens.length} students in ${classroom.name}`);
+  } catch (err) {
+    console.error('Error sending bulk classroom enrolled notifications:', err);
+  }
+};
+
+/**
+ * 3. Notify teacher when a student joins their classroom using the class code
+ */
+export const sendNewStudentJoinedNotification = async ({ teacherId, studentName, classroom }) => {
+  try {
+    if (!teacherId || !classroom) return;
+    const teacher = await User.findById(teacherId).select('name username fcmToken').lean();
+    if (!teacher || !teacher.fcmToken) return;
+
+    const title = `👤 New Student Joined!`;
+    const body = `${studentName || 'A new student'} just joined your classroom "${classroom.name}".`;
+
+    await sendPushNotification(
+      teacher.fcmToken,
+      title,
+      body,
+      {
+        url: `/teacher/classroom/${classroom._id.toString()}`,
+        type: 'student_joined_class',
+        classroomId: classroom._id.toString(),
+      }
+    );
+    console.log(`📢 Sent student joined push to teacher for classroom ${classroom.name}`);
+  } catch (err) {
+    console.error('Error sending student joined notification to teacher:', err);
+  }
+};
+
+/**
+ * 4. Notify all enrolled classroom students when a new homework is assigned
+ */
+export const sendHomeworkAssignedNotification = async ({ assignment, classroom, teacherName }) => {
+  try {
+    if (!assignment || !classroom) return;
+    const studentIds = classroom.students || [];
+    if (!studentIds.length) return;
+
+    const students = await User.find(
+      { _id: { $in: studentIds }, fcmToken: { $ne: null } },
+      'name username fcmToken'
+    ).lean();
+
+    const tokens = students.map(s => s.fcmToken).filter(t => t && t.length > 10);
+    if (!tokens.length) return;
+
+    const dueFormatted = formatDueDateForNotification(assignment.dueDate);
+    const teacher = teacherName || 'Your Teacher';
+    const title = `📝 New Homework: ${assignment.title}`;
+    const body = `${teacher} assigned new homework for ${classroom.name}! Chapter: ${assignment.chapterTitle} (Due: ${dueFormatted}). Tap to start!`;
+
+    await sendMulticastPushNotification({
+      tokens,
+      title,
+      body,
+      data: {
+        url: '/homework',
+        type: 'homework_assigned',
+        assignmentId: assignment._id.toString(),
+        classroomId: classroom._id.toString(),
+      }
+    });
+    console.log(`📢 Sent homework assigned push to ${tokens.length} students in ${classroom.name}`);
+  } catch (err) {
+    console.error('Error sending homework assigned notification:', err);
+  }
+};
+
+/**
+ * 5. Notify student & teacher when a student completes all required lessons for an assignment
+ */
+export const sendHomeworkCompletedNotifications = async ({ studentId, assignmentId }) => {
+  try {
+    const assignment = await Assignment.findById(assignmentId).lean();
+    if (!assignment) return;
+
+    const [classroom, student] = await Promise.all([
+      Classroom.findById(assignment.classroomId).populate('teacherId', 'name username fcmToken').lean(),
+      User.findById(studentId).select('name username fcmToken').lean(),
+    ]);
+
+    if (!classroom || !student) return;
+
+    // Notify the student
+    if (student.fcmToken) {
+      await sendPushNotification(
+        student.fcmToken,
+        `🎉 Homework Completed!`,
+        `Awesome job, ${student.name || student.username}! You've finished all missions for "${assignment.title}" in ${classroom.name}! 🌟`,
+        {
+          url: '/homework',
+          type: 'homework_completed',
+          assignmentId: assignment._id.toString(),
+          classroomId: classroom._id.toString(),
+        }
+      );
+      console.log(`📢 Sent homework completed push to student ${student.name || student.username}`);
+    }
+  } catch (err) {
+    console.error('Error sending homework completed notification to student:', err);
+  }
+};
+
+/**
+ * 6. Send manual push reminder from teacher to all pending students of an assignment
+ */
+export const sendManualNudgeToPendingStudents = async ({ assignmentId, teacherUser }) => {
+  try {
+    const assignment = await Assignment.findById(assignmentId);
+    if (!assignment) throw new Error('Assignment not found');
+
+    const classroom = await Classroom.findById(assignment.classroomId)
+      .populate('students', 'name username fcmToken chaptersProgress')
+      .lean();
+
+    if (!classroom) throw new Error('Classroom not found');
+
+    const targetModuleIds = (assignment.targetLessons || []).map(l => String(l.moduleId));
+    const totalTargets = targetModuleIds.length;
+
+    // Filter pending students who have not completed all targets
+    const pendingStudents = (classroom.students || []).filter(student => {
+      const completedSet = new Set();
+      if (Array.isArray(student.chaptersProgress)) {
+        student.chaptersProgress.forEach(cp => {
+          if (Array.isArray(cp.completedModules)) {
+            cp.completedModules.forEach(mid => completedSet.add(String(mid)));
+          }
+        });
+      }
+      const completedCount = targetModuleIds.filter(mid => completedSet.has(mid)).length;
+      return totalTargets === 0 || completedCount < totalTargets;
+    });
+
+    const pendingTokens = pendingStudents.map(s => s.fcmToken).filter(t => t && t.length > 10);
+    const dueFormatted = formatDueDateForNotification(assignment.dueDate);
+    const teacherName = teacherUser?.name || teacherUser?.username || 'Your Teacher';
+
+    if (pendingTokens.length > 0) {
+      await sendMulticastPushNotification({
+        tokens: pendingTokens,
+        title: `📢 Homework Reminder from ${teacherName}`,
+        body: `Please finish your homework "${assignment.title}" for ${classroom.name} (Due: ${dueFormatted})! Tap to complete your lessons.`,
+        data: {
+          url: '/homework',
+          type: 'teacher_nudge',
+          assignmentId: assignment._id.toString(),
+          classroomId: classroom._id.toString(),
+        }
+      });
+      console.log(`📢 Sent teacher manual nudge to ${pendingTokens.length} pending students for "${assignment.title}"`);
+    }
+
+    assignment.remindersSent = assignment.remindersSent || {};
+    assignment.remindersSent.lastManualNudgeAt = new Date();
+    await assignment.save();
+
+    return {
+      success: true,
+      pendingCount: pendingStudents.length,
+      nudgedCount: pendingTokens.length,
+    };
+  } catch (err) {
+    console.error('Error sending manual nudge to pending students:', err);
+    throw err;
+  }
+};
+
+/**
+ * 7. Automated Cron: Hourly check for homework deadlines (Due Tomorrow, Due Today, and Overdue)
+ */
+export const startHomeworkDeadlineReminderCron = () => {
+  // Run every hour at minute 10 ('10 * * * *')
+  cron.schedule('10 * * * *', async () => {
+    console.log('⏰ Running Automated Homework Deadline Check Cron...');
+    try {
+      const now = new Date();
+
+      // Find all active assignments with their classroom info
+      const activeAssignments = await Assignment.find({ status: 'active' })
+        .populate('classroomId', 'name subject students')
+        .lean();
+
+      if (!activeAssignments.length) return;
+
+      for (const assignment of activeAssignments) {
+        if (!assignment.classroomId || !assignment.dueDate) continue;
+        const classroom = assignment.classroomId;
+        const dueDate = new Date(assignment.dueDate);
+        const diffHours = (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+        const reminders = assignment.remindersSent || {};
+
+        let shouldRemind = false;
+        let reminderType = '';
+        let title = '';
+        let body = '';
+        let updateField = '';
+
+        // 1. Due Tomorrow (~18 to 28 hours before deadline)
+        if (diffHours >= 18 && diffHours <= 28 && !reminders.dueTomorrow) {
+          shouldRemind = true;
+          reminderType = 'homework_due_tomorrow';
+          const dueFormatted = formatDueDateForNotification(dueDate);
+          title = `⏰ Homework Due Tomorrow!`;
+          body = `Don't forget! "${assignment.title}" for ${classroom.name} is due ${dueFormatted}. Complete your missions now!`;
+          updateField = 'remindersSent.dueTomorrow';
+        }
+        // 2. Due Today (0 to 8 hours before deadline)
+        else if (diffHours > 0 && diffHours <= 8 && !reminders.dueToday) {
+          shouldRemind = true;
+          reminderType = 'homework_due_today';
+          const dueFormatted = formatDueDateForNotification(dueDate);
+          title = `🚨 Homework Due Today!`;
+          body = `Final reminder! "${assignment.title}" for ${classroom.name} is due ${dueFormatted}. Finish your lessons now!`;
+          updateField = 'remindersSent.dueToday';
+        }
+        // 3. Overdue (Passed between 1 and 24 hours ago)
+        else if (diffHours < 0 && diffHours >= -24 && !reminders.overdue) {
+          shouldRemind = true;
+          reminderType = 'homework_overdue';
+          const dueFormatted = formatDueDateForNotification(dueDate);
+          title = `⚠️ Homework Overdue: ${assignment.title}`;
+          body = `Your homework for ${classroom.name} was due on ${dueFormatted}. It's not too late to catch up and complete it!`;
+          updateField = 'remindersSent.overdue';
+        }
+
+        if (!shouldRemind || !updateField) continue;
+
+        // Atomic lock so concurrent processes/instances never fire the same reminder twice
+        const locked = await Assignment.findOneAndUpdate(
+          { _id: assignment._id, [updateField]: false },
+          { $set: { [updateField]: true } }
+        );
+
+        if (!locked) continue; // Locked by another instance
+
+        // Determine which students have NOT completed this assignment
+        const students = await User.find(
+          { _id: { $in: classroom.students || [] }, fcmToken: { $ne: null } },
+          'name username fcmToken chaptersProgress'
+        ).lean();
+
+        const targetModuleIds = (assignment.targetLessons || []).map(l => String(l.moduleId));
+        const totalTargets = targetModuleIds.length;
+
+        const pendingStudents = students.filter(student => {
+          const completedSet = new Set();
+          if (Array.isArray(student.chaptersProgress)) {
+            student.chaptersProgress.forEach(cp => {
+              if (Array.isArray(cp.completedModules)) {
+                cp.completedModules.forEach(mid => completedSet.add(String(mid)));
+              }
+            });
+          }
+          const completedCount = targetModuleIds.filter(mid => completedSet.has(mid)).length;
+          return totalTargets === 0 || completedCount < totalTargets;
+        });
+
+        const tokens = pendingStudents.map(s => s.fcmToken).filter(t => t && t.length > 10);
+        if (tokens.length > 0) {
+          console.log(`📢 [Homework Deadline Cron] Sending ${reminderType} to ${tokens.length} pending students for "${assignment.title}"`);
+          await sendMulticastPushNotification({
+            tokens,
+            title,
+            body,
+            data: {
+              url: '/homework',
+              type: reminderType,
+              assignmentId: assignment._id.toString(),
+              classroomId: classroom._id.toString(),
+            }
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error in Homework Deadline Reminder Cron:', err);
+    }
+  }, {
+    timezone: 'Asia/Kolkata'
+  });
+
+  console.log('🚀 Homework Deadline Reminder Cron Scheduled (Hourly at :10 IST)');
+};
+
+/**
+ * 8. End-of-Day Daily Summary Notification Cron for Teachers (Daily 8:30 PM IST)
+ * Consolidates daily student completions and classroom status into a single, non-spammy summary.
+ */
+export const startTeacherDailySummaryCron = () => {
+  cron.schedule('30 20 * * *', async () => {
+    console.log('⏰ Running Teacher Daily Summary Cron (8:30 PM IST)...');
+    try {
+      const todayString = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }).split(',')[0].replace(/\//g, '-');
+      const lockKey = `cron_teacher_summary_${todayString}`;
+
+      const lock = await SystemSettings.findOneAndUpdate(
+        { key: lockKey },
+        { $setOnInsert: { key: lockKey, value: 'locked', description: `Lock for teacher daily summary on ${todayString}` } },
+        { upsert: true, returnDocument: 'before' }
+      );
+
+      if (lock) {
+        console.log(`🔒 Teacher daily summary already ran today (Lock found: ${lockKey}). Skipping.`);
+        return;
+      }
+
+      // Find all teachers who have active classrooms
+      const activeClassrooms = await Classroom.find({ isActive: true })
+        .populate('teacherId', 'name username fcmToken')
+        .populate('students', 'chaptersProgress')
+        .lean();
+
+      if (!activeClassrooms.length) return;
+
+      // Group classrooms by teacherId
+      const teacherClassroomMap = new Map();
+      activeClassrooms.forEach(c => {
+        const teacher = c.teacherId;
+        if (!teacher || !teacher._id || !teacher.fcmToken || teacher.fcmToken.length < 10) return;
+        const tid = teacher._id.toString();
+        if (!teacherClassroomMap.has(tid)) {
+          teacherClassroomMap.set(tid, {
+            teacher,
+            classrooms: [],
+          });
+        }
+        teacherClassroomMap.get(tid).classrooms.push(c);
+      });
+
+      console.log(`📢 Preparing daily summaries for ${teacherClassroomMap.size} teachers with registered push devices...`);
+
+      for (const [tid, { teacher, classrooms }] of teacherClassroomMap.entries()) {
+        const classroomIds = classrooms.map(c => c._id);
+        const activeAssignments = await Assignment.find({
+          classroomId: { $in: classroomIds },
+          status: 'active',
+        }).lean();
+
+        const totalEnrolled = classrooms.reduce((acc, c) => acc + (c.students?.length || 0), 0);
+
+        let title = '📊 Daily Teaching Summary';
+        let body = '';
+
+        if (activeAssignments.length > 0) {
+          let totalCompletedSubmissions = 0;
+          let totalPendingSubmissions = 0;
+
+          // Build map of students for fast lookup
+          const studentMap = new Map();
+          classrooms.forEach(c => {
+            (c.students || []).forEach(s => {
+              if (s?._id) studentMap.set(s._id.toString(), s);
+            });
+          });
+
+          activeAssignments.forEach(assignment => {
+            const classObj = classrooms.find(c => c._id.toString() === assignment.classroomId.toString());
+            const studentsInClass = classObj?.students || [];
+            const targetIds = (assignment.targetLessons || []).map(l => String(l.moduleId));
+            const totalTargets = targetIds.length;
+
+            studentsInClass.forEach(s => {
+              const fullStudent = studentMap.get(s._id?.toString()) || s;
+              const completedSet = new Set();
+              if (Array.isArray(fullStudent.chaptersProgress)) {
+                fullStudent.chaptersProgress.forEach(cp => {
+                  if (Array.isArray(cp.completedModules)) {
+                    cp.completedModules.forEach(mid => completedSet.add(String(mid)));
+                  }
+                });
+              }
+              const isFinished = totalTargets > 0 && targetIds.every(mid => completedSet.has(mid));
+              if (isFinished) {
+                totalCompletedSubmissions++;
+              } else {
+                totalPendingSubmissions++;
+              }
+            });
+          });
+
+          const teacherName = teacher.name || teacher.username || 'Teacher';
+          title = `📊 Daily Classroom Summary`;
+          body = `Hi ${teacherName}! Today's overview: ${totalCompletedSubmissions} submissions finished across your classes (${totalPendingSubmissions} pending). Tap to view full tracking report!`;
+        } else if (totalEnrolled > 0) {
+          const teacherName = teacher.name || teacher.username || 'Teacher';
+          title = `🏫 Classroom Status`;
+          body = `Hi ${teacherName}! You have ${totalEnrolled} students across ${classrooms.length} active classroom${classrooms.length === 1 ? '' : 's'}. Assign homework to keep their practice going!`;
+        } else {
+          continue; // Skip teachers with empty classrooms
+        }
+
+        await sendPushNotification(
+          teacher.fcmToken,
+          title,
+          body,
+          {
+            url: '/teacher',
+            type: 'teacher_daily_summary',
+          }
+        );
+      }
+
+      console.log('✅ Teacher Daily Summary Push Notification Cron completed.');
+    } catch (err) {
+      console.error('Error in Teacher Daily Summary Cron:', err);
+    }
+  }, {
+    timezone: 'Asia/Kolkata'
+  });
+
+  console.log('🚀 Teacher Daily Summary Cron Scheduled (Daily 8:30 PM IST)');
 };
 

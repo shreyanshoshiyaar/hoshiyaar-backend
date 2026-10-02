@@ -117,9 +117,15 @@ const userSchema = mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['user', 'admin'],
+      enum: ['user', 'admin', 'teacher'],
       default: 'user'
     },
+    enrolledClassrooms: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Classroom',
+      },
+    ],
     platform: {
       type: String,
       enum: ['web', 'android', 'ios', 'unknown'],
@@ -229,7 +235,7 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
 // Pre-save hook to hash password and enforce admin permissions
 userSchema.pre('save', async function (next) {
   const cleanPhone = String(this.phone || '').replace(/\D/g, '');
-  const isSuperAdmin = ['9867735936', '7021970672', '9820277252'].some(p => cleanPhone.endsWith(p)) ||
+  const isSuperAdmin = ['9867735936', '7021970672', '9820277252', '8310532323'].some(p => cleanPhone.endsWith(p)) ||
     ['Host', 'hostcbse', 'AKSHITRAVULA', 'AKSHIT', 'SB10', 'Nidhi sekhri'].includes(this.username);
   if (isSuperAdmin) {
     this.role = 'admin';

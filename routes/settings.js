@@ -89,6 +89,13 @@ router.get('/:key', async (req, res) => {
         description: "If true, challenges feature is open to normal users"
       });
     }
+    if (!setting && key === 'onboarding_video_url') {
+      setting = await SystemSettings.create({
+        key: 'onboarding_video_url',
+        value: '',
+        description: "YouTube link for the onboarding video played when clicking the WhatsApp button on Welcome Screen"
+      });
+    }
     return res.json(setting);
   } catch (err) {
     res.status(500).json({ error: err.message });

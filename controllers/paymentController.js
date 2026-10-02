@@ -6,6 +6,8 @@ import PaymentTransaction from '../models/PaymentTransaction.js';
 import UserSubscription from '../models/UserSubscription.js';
 import Module from '../models/Module.js';
 import Chapter from '../models/Chapter.js';
+import Classroom from '../models/Classroom.js';
+import Assignment from '../models/Assignment.js';
 import razorpayService from '../services/razorpayService.js';
 
 /**
@@ -14,102 +16,77 @@ import razorpayService from '../services/razorpayService.js';
 export const seedDefaultPlans = async () => {
   const defaultPlans = [
     {
-      code: 'monthly_pass',
-      name: 'Monthly Unlimited Pass',
-      description: 'Unlimited access to all subjects, chapters, AI feedback, and revision rounds for 30 days.',
-      type: 'subscription',
-      billingCycle: 'monthly',
-      amount: 299, // In Rupees
-      discountedFrom: 499, // In Rupees
+      code: 'pay_per_chapter',
+      name: 'Pay Per Chapter (1 Year Pass)',
+      description: '1-Year full unlock for this chapter, including all lessons and Chapter Exam Mode.',
+      type: 'pay_per_chapter',
+      billingCycle: 'annual',
+      amount: 50, // In Rupees
+      discountedFrom: 99, // In Rupees
       currency: 'INR',
-      badge: 'Most Popular',
+      badge: '1-Year Chapter Pass',
       features: [
-        'Full access to all chapters and interactive lessons',
-        'Unlimited AI explanations and feedback',
-        'Personalized Revision Rounds & Star tests',
-        'Exam mode & detailed progress reports',
-        'Cancel anytime without lock-in'
+        '1 Full Year unlimited access to this chapter',
+        'All lessons and levels in chapter unlocked',
+        'Full access to Chapter Exam Mode & AI scoring',
+        'Quizzes, interactive feedback & revision cards'
       ],
       isActive: true,
       sortOrder: 1
-    },
-    {
-      code: 'annual_pass',
-      name: 'Annual Unlimited Pass',
-      description: 'Full 1-year unlimited access to all subjects, chapters, AI explanations, and revision rounds.',
-      type: 'subscription',
-      billingCycle: 'annual',
-      amount: 1999, // In Rupees (~₹166/month, 45% discount)
-      discountedFrom: 3588, // In Rupees
-      currency: 'INR',
-      badge: 'Best Value • Save 45%',
-      features: [
-        '1 Full Year of unlimited learning (Save 45%)',
-        'All chapters and subjects unlocked',
-        'Unlimited AI explanations and doubts',
-        'Revision rounds & Star tests',
-        'Priority customer support'
-      ],
-      isActive: true,
-      sortOrder: 2
-    },
-    {
-      code: 'pay_per_lesson',
-      name: 'Single Lesson Pass',
-      description: 'Permanent unlock for this specific lesson with full interactive practice.',
-      type: 'pay_per_lesson',
-      billingCycle: 'per_lesson',
-      amount: 19, // In Rupees
-      discountedFrom: 29, // In Rupees
-      currency: 'INR',
-      badge: 'Pay as you go',
-      features: [
-        'Permanent access to this chosen lesson',
-        'Interactive quizzes & fill-in-the-blanks',
-        'Instant AI grading & feedback',
-        'Lifetime access on this account'
-      ],
-      isActive: true,
-      sortOrder: 3
     }
   ];
+
+  // Remove other legacy plans from DB so only our active plan remains
+  await SubscriptionPlan.deleteMany({ code: { $ne: 'pay_per_chapter' } });
 
   for (const planData of defaultPlans) {
     const existing = await SubscriptionPlan.findOne({ code: planData.code });
     if (!existing) {
       await SubscriptionPlan.create(planData);
       console.log(`[Payment] Seeded default plan: ${planData.code} (${planData.name})`);
+    } else {
+      if (!existing.isActive || existing.amount !== 50) {
+        existing.isActive = true;
+        existing.amount = 50;
+        await existing.save();
+      }
     }
   }
 };
 
 /**
- * Assigns a deterministic A/B testing variant based on user ID
+ * Assigns a deterministic A/B testing variant: 'paid' (default) vs 'free'
  */
-const determineUserVariant = (userId, abTestingConfig) => {
+const determineUserVariant = (userId, abTestingConfig, user = null) => {
   if (!abTestingConfig?.enabled) {
-    return 'hybrid';
+    return 'paid'; // Default is PAID for all users
   }
 
-  const variants = abTestingConfig.variants || {};
-  const controlPct = variants.control_free?.percentage ?? 10;
-  const monthlyPct = variants.monthly_only?.percentage ?? 30;
-  const perLessonPct = variants.pay_per_lesson_only?.percentage ?? 30;
-  // remaining goes to hybrid
+  const userIdStr = String(userId);
 
-  // Hash user ID to an integer between 0 and 99
-  const hash = crypto.createHash('md5').update(String(userId)).digest('hex');
+  // 1. Check if user is explicitly listed in free users
+  if (abTestingConfig.freeUsers?.some(id => String(id) === userIdStr)) {
+    return 'free';
+  }
+
+  // 2. Check if phone is explicitly listed in free phones
+  if (user?.phone) {
+    const cleanPhone = String(user.phone).replace(/\D/g, '');
+    if (cleanPhone && abTestingConfig.freePhones?.some(p => cleanPhone.endsWith(String(p).replace(/\D/g, '')))) {
+      return 'free';
+    }
+  }
+
+  // 3. Percentage-based free allocation (0% by default, 100% paid)
+  const freePct = Number(abTestingConfig.freePercentage ?? 0);
+  if (freePct <= 0) return 'paid';
+  if (freePct >= 100) return 'free';
+
+  // Deterministic MD5 hash to 0-99
+  const hash = crypto.createHash('md5').update(userIdStr).digest('hex');
   const bucket = parseInt(hash.substring(0, 4), 16) % 100;
 
-  if (bucket < controlPct) {
-    return 'control_free';
-  } else if (bucket < controlPct + monthlyPct) {
-    return 'monthly_only';
-  } else if (bucket < controlPct + monthlyPct + perLessonPct) {
-    return 'pay_per_lesson_only';
-  } else {
-    return 'hybrid';
-  }
+  return bucket < freePct ? 'free' : 'paid';
 };
 
 /**
@@ -130,7 +107,11 @@ export const getPublicConfig = async (req, res) => {
     res.json({
       paywallEnabled: config.paywallEnabled,
       subscriptionMode: config.subscriptionMode || 'admin_only',
+      freeAccessForActiveHomework: config.freeAccessForActiveHomework !== false,
       freeTrialDays: config.freeTrialDays,
+      defaultLessonPrice: config.defaultLessonPrice || 50,
+      defaultChapterPrice: config.defaultChapterPrice || config.defaultLessonPrice || 50,
+      defaultFreeLessonsCount: config.defaultFreeLessonsCount || 1,
       mockMode,
       razorpayKeyId: keyId,
       plans
@@ -147,7 +128,7 @@ export const getPublicConfig = async (req, res) => {
  */
 export const checkAccess = async (req, res) => {
   try {
-    const { moduleId } = req.body;
+    const { moduleId, chapterId: paramChapterId, checkType } = req.body;
     const user = req.user;
 
     await seedDefaultPlans();
@@ -170,14 +151,14 @@ export const checkAccess = async (req, res) => {
       return res.status(401).json({
         hasAccess: false,
         reason: 'login_required',
-        message: 'Please sign in to access this lesson'
+        message: 'Please sign in to access this content'
       });
     }
 
     // 2. Identify Admin / Whitelist Privileges
     const previewMode = String(req.headers['x-admin-preview-mode'] || req.body?.previewMode || '').toLowerCase();
     const cleanPhone = String(user.phone || '').replace(/\D/g, '');
-    const adminPhones = ['9867735936', '7021970672', '9820277252'];
+    const adminPhones = ['9867735936', '7021970672', '9820277252', '8310532323'];
     const adminUsernames = ['Host', 'hostcbse', 'AKSHITRAVULA', 'AKSHIT', 'SB10', 'Nidhi sekhri'];
     const isAdminUser = 
       user.role === 'admin' || 
@@ -210,7 +191,7 @@ export const checkAccess = async (req, res) => {
     // Find or create UserSubscription record
     let userSub = await UserSubscription.findOne({ userId: user._id });
     if (!userSub) {
-      const initialVariant = determineUserVariant(user._id, config.abTesting);
+      const initialVariant = determineUserVariant(user._id, config.abTesting, user);
       userSub = await UserSubscription.create({
         userId: user._id,
         status: 'free_trial',
@@ -219,9 +200,17 @@ export const checkAccess = async (req, res) => {
       });
     }
 
-    // Ensure variant is assigned
-    if (!userSub.assignedVariant) {
-      userSub.assignedVariant = determineUserVariant(user._id, config.abTesting);
+    // Ensure variant is assigned and kept in sync
+    const cleanUserPhone = String(user.phone || '').replace(/\D/g, '');
+    const isExplicitFreeUser = 
+      config.abTesting?.freeUsers?.some(id => String(id) === String(user._id)) ||
+      (cleanUserPhone && config.abTesting?.freePhones?.some(p => cleanUserPhone.endsWith(String(p).replace(/\D/g, ''))));
+
+    if (isExplicitFreeUser && userSub.assignedVariant !== 'free') {
+      userSub.assignedVariant = 'free';
+      await userSub.save();
+    } else if (!userSub.assignedVariant) {
+      userSub.assignedVariant = determineUserVariant(user._id, config.abTesting, user);
       await userSub.save();
     }
 
@@ -265,7 +254,114 @@ export const checkAccess = async (req, res) => {
       }
     }
 
-    // 5. Pay-Per-Lesson Check: Did the student buy this specific module?
+    // Resolve chapter details if moduleId or paramChapterId is provided
+    let effectiveChapterId = paramChapterId ? String(paramChapterId) : null;
+    let modDoc = null;
+    if (moduleId && mongoose.isValidObjectId(moduleId)) {
+      try {
+        modDoc = await Module.findById(moduleId).lean();
+        if (modDoc?.chapterId) effectiveChapterId = String(modDoc.chapterId);
+      } catch (e) {
+        console.warn('[Payment] Error fetching module doc for chapterId:', e);
+      }
+    }
+
+    let chapterDoc = null;
+    if (effectiveChapterId && mongoose.isValidObjectId(effectiveChapterId)) {
+      try {
+        chapterDoc = await Chapter.findById(effectiveChapterId).lean();
+      } catch (e) {
+        console.warn('[Payment] Error fetching chapter doc:', e);
+      }
+    }
+
+    // 5. Pay-Per-Chapter Check: Did the student unlock this chapter for 1 year?
+    if (effectiveChapterId) {
+      const activeChapterPurchase = userSub.purchasedChapters?.find(c => 
+        String(c.chapterId) === String(effectiveChapterId) && new Date(c.expiresAt) > new Date()
+      );
+      if (activeChapterPurchase) {
+        return res.json({
+          hasAccess: true,
+          reason: 'chapter_purchased',
+          chapterId: effectiveChapterId,
+          chapterTitle: chapterDoc?.title || '',
+          expiresAt: activeChapterPurchase.expiresAt,
+          message: 'Chapter unlocked (1-Year Pass)'
+        });
+      }
+    }
+
+    // 5a. Classroom Homework Check: Free chapter access for active homework
+    // If student is enrolled in a classroom and has an active assignment for this chapter/module,
+    // grant 100% free access (including Exam Mode) until homework dueDate passes.
+    if (config.freeAccessForActiveHomework !== false && user?._id) {
+      try {
+        const studentClassrooms = await Classroom.find({ students: user._id, isActive: true }).select('_id').lean();
+        if (studentClassrooms.length > 0) {
+          const classroomIds = studentClassrooms.map(c => c._id);
+          const activeAssignments = await Assignment.find({
+            classroomId: { $in: classroomIds },
+            status: 'active',
+            dueDate: { $gt: new Date() }
+          }).lean();
+
+          if (activeAssignments.length > 0) {
+            const chapTitle = (chapterDoc?.title || chapterDoc?.name || '').trim().toLowerCase();
+            const matchesAssignment = activeAssignments.find(a => {
+              // Direct chapterId match
+              if (effectiveChapterId && a.chapterId && String(a.chapterId) === String(effectiveChapterId)) {
+                return true;
+              }
+              // Chapter title match (case-insensitive)
+              if (chapTitle && a.chapterTitle && a.chapterTitle.trim().toLowerCase() === chapTitle) {
+                return true;
+              }
+              // Module ID match
+              if (moduleId && a.targetLessons?.some(l => String(l.moduleId) === String(moduleId))) {
+                return true;
+              }
+              return false;
+            });
+
+            if (matchesAssignment) {
+              return res.json({
+                hasAccess: true,
+                reason: 'active_homework_free_access',
+                chapterId: effectiveChapterId || matchesAssignment.chapterId,
+                chapterTitle: matchesAssignment.chapterTitle || chapterDoc?.title || '',
+                dueDate: matchesAssignment.dueDate,
+                assignmentTitle: matchesAssignment.title,
+                message: `Free access granted for active homework: ${matchesAssignment.title}`
+              });
+            }
+          }
+        }
+      } catch (hwErr) {
+        console.warn('[Payment] Error checking active homework access in checkAccess:', hwErr);
+      }
+    }
+
+    // 5b. If checking for Exam Mode specifically:
+    // Exam mode requires unlocking the chapter (1-Year Pass)
+    const { keyId, mockMode } = await razorpayService.getClient();
+    const allPlans = await SubscriptionPlan.find({ isActive: true }).sort({ sortOrder: 1 });
+
+    if (checkType === 'exam' || (!moduleId && effectiveChapterId)) {
+      return res.json({
+        hasAccess: false,
+        reason: 'chapter_exam_locked',
+        chapterId: effectiveChapterId,
+        chapterTitle: chapterDoc?.title || '',
+        chapterPrice: chapterDoc?.chapterPrice ?? chapterDoc?.lessonPrice ?? config.defaultChapterPrice ?? 50,
+        mockMode,
+        razorpayKeyId: keyId,
+        plans: allPlans,
+        message: 'Exam Mode requires unlocking this chapter (1-Year Pass)'
+      });
+    }
+
+    // 5b. Pay-Per-Lesson Check: Did the student buy this specific module? (legacy support)
     if (moduleId && userSub.purchasedModules?.some(m => String(m.moduleId) === String(moduleId))) {
       return res.json({
         hasAccess: true,
@@ -274,76 +370,71 @@ export const checkAccess = async (req, res) => {
       });
     }
 
-    // 5b. First Lesson Free Preview: The first lesson of each module/chapter is free for everyone
-    if (moduleId) {
+    // 5c. Dynamic Free Levels Preview: Check if this lesson falls within free level quota for this chapter
+    if (moduleId && modDoc) {
       try {
-        const modDoc = mongoose.isValidObjectId(moduleId) ? await Module.findById(moduleId).lean() : null;
-        if (modDoc) {
-          const filter = modDoc.unitId ? { unitId: modDoc.unitId } : { chapterId: modDoc.chapterId };
-          const firstMod = await Module.findOne(filter).sort({ order: 1, createdAt: 1 }).lean();
-          if (firstMod && String(firstMod._id) === String(modDoc._id)) {
-            return res.json({
-              hasAccess: true,
-              reason: 'first_lesson_free',
-              message: 'First lesson of each module is free!'
-            });
-          }
+        const freeCount = chapterDoc?.freeLessonsCount != null
+          ? Number(chapterDoc.freeLessonsCount)
+          : (config.defaultFreeLessonsCount ?? 1);
+
+        const filter = modDoc.unitId ? { unitId: modDoc.unitId } : { chapterId: modDoc.chapterId };
+        const chapterModules = await Module.find(filter).sort({ order: 1, createdAt: 1 }).select('_id').lean();
+        const modIndex = chapterModules.findIndex(m => String(m._id) === String(modDoc._id));
+
+        if (modIndex !== -1 && modIndex < freeCount) {
+          return res.json({
+            hasAccess: true,
+            reason: 'free_lesson_preview',
+            freeLessonsCount: freeCount,
+            lessonIndex: modIndex,
+            message: `Level ${modIndex + 1} is free in this chapter!`
+          });
         }
       } catch (e) {
-        console.warn('[Payment] First lesson lookup error:', e);
+        console.warn('[Payment] Free lesson lookup error:', e);
       }
     }
 
     // 6. Free Trial Window Evaluation (Configurable, bypassed in student preview)
-    if (previewMode !== 'student') {
-      const firstActive = userSub.firstActiveDate || user.createdAt || new Date();
-      const daysSinceStart = Math.floor((Date.now() - new Date(firstActive).getTime()) / (1000 * 60 * 60 * 24));
-      const trialDaysConfigured = config.freeTrialDays || 0;
+    const firstActive = userSub.firstActiveDate || user.createdAt || new Date();
+    const daysSinceStart = Math.floor((Date.now() - new Date(firstActive).getTime()) / (1000 * 60 * 60 * 24));
+    const trialDaysConfigured = previewMode === 'student' ? 0 : (config.freeTrialDays || 0);
 
-      if (trialDaysConfigured > 0 && daysSinceStart < trialDaysConfigured) {
-        const daysRemaining = trialDaysConfigured - daysSinceStart;
-        return res.json({
-          hasAccess: true,
-          reason: 'free_trial',
-          daysElapsed: daysSinceStart,
-          daysRemaining: Math.max(1, daysRemaining),
-          totalTrialDays: trialDaysConfigured,
-          message: `Enjoying free trial: ${daysRemaining} day(s) remaining`
-        });
-      }
-    }
-
-    // 7. A/B Testing: Control Group (100% Free / No Paywall)
-    if (userSub.assignedVariant === 'control_free') {
+    if (trialDaysConfigured > 0 && daysSinceStart < trialDaysConfigured) {
+      const daysRemaining = trialDaysConfigured - daysSinceStart;
       return res.json({
         hasAccess: true,
-        reason: 'ab_test_control_free',
-        variant: 'control_free',
-        message: 'Access granted'
+        reason: 'free_trial',
+        daysElapsed: daysSinceStart,
+        daysRemaining: Math.max(1, daysRemaining),
+        totalTrialDays: trialDaysConfigured,
+        message: `Enjoying free trial: ${daysRemaining} day(s) remaining`
       });
     }
 
-    // 8. Otherwise: Paywall applies! Fetch relevant plans for this student's A/B variant
-    const allPlans = await SubscriptionPlan.find({ isActive: true }).sort({ sortOrder: 1 });
-    let offeredPlans = allPlans;
-
-    if (userSub.assignedVariant === 'monthly_only') {
-      offeredPlans = allPlans.filter(p => p.type === 'subscription');
-    } else if (userSub.assignedVariant === 'pay_per_lesson_only') {
-      offeredPlans = allPlans.filter(p => p.type === 'pay_per_lesson');
+    // 7. A/B Testing: Free Group (100% Free / Zero Paywall)
+    if (isExplicitFreeUser || userSub.assignedVariant === 'free' || userSub.assignedVariant === 'control_free') {
+      return res.json({
+        hasAccess: true,
+        reason: 'ab_test_free',
+        variant: 'free',
+        message: 'Access granted via Free Test Group'
+      });
     }
 
-    const { keyId, mockMode } = await razorpayService.getClient();
-
+    // 8. Otherwise: Paywall applies! (Default: Paid for all users)
     return res.json({
       hasAccess: false,
       reason: 'paywall_required',
-      variant: userSub.assignedVariant || 'hybrid',
+      variant: userSub.assignedVariant || 'paid',
+      chapterId: effectiveChapterId,
+      chapterTitle: chapterDoc?.title || '',
+      chapterPrice: chapterDoc?.chapterPrice ?? chapterDoc?.lessonPrice ?? config.defaultChapterPrice ?? 50,
       totalTrialDays: trialDaysConfigured,
       daysElapsed: daysSinceStart,
       mockMode,
       razorpayKeyId: keyId,
-      plans: offeredPlans
+      plans: allPlans
     });
   } catch (error) {
     console.error('[Payment] Error in checkAccess:', error);
@@ -365,7 +456,7 @@ export const getUserStatus = async (req, res) => {
 
     let userSub = await UserSubscription.findOne({ userId: user._id }).populate('activePlan');
     if (!userSub) {
-      const initialVariant = determineUserVariant(user._id, config.abTesting);
+      const initialVariant = determineUserVariant(user._id, config.abTesting, user);
       userSub = await UserSubscription.create({
         userId: user._id,
         status: 'free_trial',
@@ -405,13 +496,45 @@ export const getUserStatus = async (req, res) => {
             chapterId: mod?.chapterId?._id ? String(mod.chapterId._id) : undefined,
             chapterTitle: mod?.chapterId?.title || mod?.chapterId?.name || '',
             purchasedAt: p.purchasedAt,
-            amountPaid: p.amountPaid || 19,
+            amountPaid: p.amountPaid || 50,
             orderId: p.orderId || ''
           };
         });
       } catch (err) {
         console.warn('[Payment] Error enriching purchased modules:', err);
         enrichedPurchasedModules = userSub.purchasedModules;
+      }
+    }
+
+    let enrichedPurchasedChapters = [];
+    if (userSub.purchasedChapters && userSub.purchasedChapters.length > 0) {
+      try {
+        const validChapIds = userSub.purchasedChapters
+          .map(c => c.chapterId)
+          .filter(id => mongoose.isValidObjectId(id));
+        const chapters = await Chapter.find({ _id: { $in: validChapIds } })
+          .populate('subjectId', 'name board classLevel grade')
+          .lean();
+        const chapMap = new Map();
+        chapters.forEach(ch => chapMap.set(String(ch._id), ch));
+
+        enrichedPurchasedChapters = userSub.purchasedChapters.map(p => {
+          const ch = chapMap.get(String(p.chapterId));
+          const isExpired = !p.expiresAt || new Date(p.expiresAt) <= new Date();
+          return {
+            chapterId: String(p.chapterId),
+            title: ch?.title || `Chapter ${p.chapterId}`,
+            subjectName: ch?.subjectId?.name || '',
+            purchasedAt: p.purchasedAt,
+            expiresAt: p.expiresAt,
+            isValid: !isExpired,
+            amountPaid: p.amountPaid || 50,
+            orderId: p.orderId || ''
+          };
+        });
+      } catch (err) {
+        console.warn('[Payment] Error enriching purchased chapters:', err);
+        enrichedPurchasedChapters = userSub.purchasedChapters;
       }
     }
 
@@ -429,6 +552,53 @@ export const getUserStatus = async (req, res) => {
       console.warn('[Payment] Error fetching payment transactions:', err);
     }
 
+    // Classroom Homework Free Access Chapters
+    let homeworkFreeChapters = [];
+    if (config.freeAccessForActiveHomework !== false && user?._id) {
+      try {
+        const studentClassrooms = await Classroom.find({ students: user._id, isActive: true }).select('_id').lean();
+        if (studentClassrooms.length > 0) {
+          const cIds = studentClassrooms.map(c => c._id);
+          const activeAssignments = await Assignment.find({
+            classroomId: { $in: cIds },
+            status: 'active',
+            dueDate: { $gt: new Date() }
+          }).lean();
+
+          const chapIdSet = new Set();
+          const chapTitleSet = new Set();
+          for (const a of activeAssignments) {
+            if (a.chapterId) chapIdSet.add(String(a.chapterId));
+            if (a.chapterTitle) chapTitleSet.add(a.chapterTitle.trim().toLowerCase());
+            if (!a.chapterId && a.targetLessons?.length > 0) {
+              const modIds = a.targetLessons.map(l => l.moduleId).filter(id => mongoose.isValidObjectId(id));
+              if (modIds.length > 0) {
+                const mods = await Module.find({ _id: { $in: modIds } }).select('chapterId').lean();
+                mods.forEach(m => {
+                  if (m.chapterId) chapIdSet.add(String(m.chapterId));
+                });
+              }
+            }
+          }
+
+          if (chapTitleSet.size > 0) {
+            const titleRegexes = Array.from(chapTitleSet).map(t => new RegExp(`^${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'));
+            const chaptersByTitle = await Chapter.find({
+              $or: [
+                { title: { $in: titleRegexes } },
+                { name: { $in: titleRegexes } }
+              ]
+            }).select('_id title').lean();
+            chaptersByTitle.forEach(ch => chapIdSet.add(String(ch._id)));
+          }
+
+          homeworkFreeChapters = Array.from(chapIdSet);
+        }
+      } catch (hwErr) {
+        console.warn('[Payment] Error fetching active homework chapters for user status:', hwErr);
+      }
+    }
+
     res.json({
       status: isStudentPreview ? 'free_trial' : userSub.status,
       activePlan: isStudentPreview ? null : userSub.activePlan,
@@ -441,10 +611,17 @@ export const getUserStatus = async (req, res) => {
       totalTrialDays: trialDaysConfigured,
       purchasedModulesCount: enrichedPurchasedModules.length,
       purchasedModules: enrichedPurchasedModules,
+      purchasedChaptersCount: enrichedPurchasedChapters.filter(c => c.isValid).length,
+      purchasedChapters: enrichedPurchasedChapters,
+      homeworkFreeChapters,
+      freeAccessForActiveHomework: config.freeAccessForActiveHomework !== false,
       paymentHistory: paymentHistory || [],
       assignedVariant: userSub.assignedVariant,
       paywallEnabled: config.paywallEnabled,
       subscriptionMode: config.subscriptionMode || 'admin_only',
+      defaultLessonPrice: config.defaultLessonPrice || 50,
+      defaultChapterPrice: config.defaultChapterPrice || config.defaultLessonPrice || 50,
+      defaultFreeLessonsCount: config.defaultFreeLessonsCount || 1,
       isAdminUser: !isStudentPreview && user.role === 'admin'
     });
   } catch (error) {
@@ -459,16 +636,21 @@ export const getUserStatus = async (req, res) => {
  */
 export const createOrder = async (req, res) => {
   try {
-    const { amount, currency, receipt, notes, planCode, moduleId, moduleIds } = req.body;
+    const { amount, currency, receipt, notes, planCode, moduleId, moduleIds, chapterId } = req.body;
     const user = req.user;
 
-    // Case 1: Subscription or pay-per-lesson plan checkout
+    let config = await PaymentConfig.findOne({ singletonKey: 'default' });
+    if (!config) config = await PaymentConfig.create({ singletonKey: 'default' });
+
+    // Case 1: Subscription, pay-per-chapter, or pay-per-lesson plan checkout
     if (planCode) {
       if (!user) {
-        return res.status(401).json({ message: 'Authentication required to create subscription order' });
+        return res.status(401).json({ message: 'Authentication required to create payment order' });
       }
 
-      const plan = await SubscriptionPlan.findOne({ code: planCode, isActive: true });
+      const plan = await SubscriptionPlan.findOne({ code: planCode, isActive: true }) ||
+                   await SubscriptionPlan.findOne({ code: 'pay_per_chapter' }) ||
+                   await SubscriptionPlan.findOne({ code: planCode });
       if (!plan) {
         return res.status(404).json({ message: `Plan '${planCode}' not found or inactive` });
       }
@@ -476,7 +658,28 @@ export const createOrder = async (req, res) => {
       let amountRupees = plan.amount;
       let itemDetails = {};
 
-      if (plan.type === 'pay_per_lesson') {
+      if (plan.type === 'pay_per_chapter' || plan.code === 'pay_per_chapter' || chapterId) {
+        let targetChapterId = chapterId;
+        if (!targetChapterId && moduleId && mongoose.isValidObjectId(moduleId)) {
+          const mod = await Module.findById(moduleId).lean();
+          if (mod?.chapterId) targetChapterId = String(mod.chapterId);
+        }
+
+        if (!targetChapterId) {
+          return res.status(400).json({ message: 'chapterId is required for chapter unlock' });
+        }
+
+        const ch = mongoose.isValidObjectId(targetChapterId) ? await Chapter.findById(targetChapterId).lean() : null;
+        const unitPrice = ch?.chapterPrice ?? ch?.lessonPrice ?? plan.amount ?? config.defaultChapterPrice ?? 50;
+        amountRupees = Number(unitPrice);
+
+        itemDetails = {
+          chapterId: String(targetChapterId),
+          chapterTitle: ch?.title || `Chapter ${targetChapterId}`,
+          validityDays: 365,
+          unitPrice
+        };
+      } else if (plan.type === 'pay_per_lesson') {
         const targetModuleIds = Array.isArray(moduleIds) && moduleIds.length > 0 
           ? moduleIds 
           : (moduleId ? [moduleId] : []);
@@ -485,11 +688,16 @@ export const createOrder = async (req, res) => {
           return res.status(400).json({ message: 'moduleId or moduleIds is required for pay-per-lesson purchase' });
         }
 
-        const unitPrice = plan.amount || 19;
-        amountRupees = unitPrice * targetModuleIds.length;
-
+        let unitPrice = plan.amount || config.defaultLessonPrice || 50;
         const validObjIds = targetModuleIds.filter(id => mongoose.isValidObjectId(id));
         const mods = validObjIds.length > 0 ? await Module.find({ _id: { $in: validObjIds } }).lean() : [];
+        if (mods.length === 1 && mods[0].chapterId) {
+          const ch = await Chapter.findById(mods[0].chapterId).lean();
+          if (ch?.lessonPrice != null && ch.lessonPrice > 0) {
+            unitPrice = Number(ch.lessonPrice);
+          }
+        }
+        amountRupees = unitPrice * targetModuleIds.length;
         const moduleTitles = mods.map(m => m.title);
 
         itemDetails = {
@@ -513,6 +721,7 @@ export const createOrder = async (req, res) => {
         notes: {
           userId: user._id.toString(),
           planCode: plan.code,
+          chapterId: itemDetails.chapterId || '',
           moduleId: targetModuleIdsList[0] || '',
           moduleIds: targetModuleIdsList.join(','),
           count: String(targetModuleIdsList.length || 1),
@@ -528,7 +737,7 @@ export const createOrder = async (req, res) => {
         amount: amountRupees,
         currency: orderResult.currency,
         status: 'created',
-        paymentType: plan.type === 'subscription' ? 'subscription' : 'pay_per_lesson',
+        paymentType: plan.type === 'subscription' ? 'subscription' : (plan.type === 'pay_per_chapter' || itemDetails.chapterId ? 'pay_per_chapter' : 'pay_per_lesson'),
         planCode: plan.code,
         itemDetails,
         userSnapshot: {
@@ -619,7 +828,7 @@ export const verifyPayment = async (req, res) => {
     const orderId = req.body.order_id || req.body.orderId || req.body.razorpay_order_id;
     const paymentId = req.body.payment_id || req.body.paymentId || req.body.razorpay_payment_id;
     const signature = req.body.signature || req.body.razorpay_signature;
-    const { planCode, moduleId, moduleIds } = req.body;
+    const { planCode, moduleId, moduleIds, chapterId } = req.body;
     const user = req.user;
 
     // Validate required fields
@@ -660,7 +869,6 @@ export const verifyPayment = async (req, res) => {
       { new: true }
     );
 
-
     const plan = await SubscriptionPlan.findOne({ code: planCode || transaction?.planCode });
     const isSubscription = plan?.type === 'subscription';
 
@@ -675,9 +883,16 @@ export const verifyPayment = async (req, res) => {
       }
     }
 
+    let targetChapterId = chapterId || transaction?.itemDetails?.chapterId;
+    if (!targetChapterId && moduleId && mongoose.isValidObjectId(moduleId)) {
+      const mod = await Module.findById(moduleId).lean();
+      if (mod?.chapterId) targetChapterId = String(mod.chapterId);
+    }
+
+    const isChapterPurchase = plan?.type === 'pay_per_chapter' || plan?.code === 'pay_per_chapter' || transaction?.paymentType === 'pay_per_chapter' || Boolean(targetChapterId);
+
     if (isSubscription) {
       const now = new Date();
-      // If user currently has active subscription time, extend it; otherwise start from now
       const baseTime = (userSub.currentPeriodEnd && new Date(userSub.currentPeriodEnd) > now)
         ? new Date(userSub.currentPeriodEnd).getTime()
         : now.getTime();
@@ -691,6 +906,51 @@ export const verifyPayment = async (req, res) => {
         userSub.currentPeriodStart = now;
       }
       userSub.currentPeriodEnd = periodEnd;
+    } else if (isChapterPurchase && targetChapterId) {
+      // 1-Year Chapter Pass
+      const now = new Date();
+      if (!userSub.purchasedChapters) userSub.purchasedChapters = [];
+      const existingPurchase = userSub.purchasedChapters.find(c => String(c.chapterId) === String(targetChapterId));
+      let expiresAt;
+      if (existingPurchase && new Date(existingPurchase.expiresAt) > now) {
+        expiresAt = new Date(new Date(existingPurchase.expiresAt).getTime() + 365 * 24 * 60 * 60 * 1000);
+        existingPurchase.expiresAt = expiresAt;
+        existingPurchase.amountPaid = (existingPurchase.amountPaid || 0) + (transaction?.amount || 50);
+        existingPurchase.orderId = orderId;
+      } else if (existingPurchase) {
+        expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+        existingPurchase.purchasedAt = now;
+        existingPurchase.expiresAt = expiresAt;
+        existingPurchase.amountPaid = transaction?.amount || 50;
+        existingPurchase.orderId = orderId;
+      } else {
+        expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+        userSub.purchasedChapters.push({
+          chapterId: String(targetChapterId),
+          purchasedAt: now,
+          expiresAt,
+          amountPaid: transaction?.amount || 50,
+          orderId
+        });
+      }
+
+      // Also unlock all modules in that chapter for backwards compatibility
+      try {
+        const chapterModules = await Module.find({ chapterId: targetChapterId }).select('_id').lean();
+        for (const mod of chapterModules) {
+          if (!userSub.purchasedModules.some(m => String(m.moduleId) === String(mod._id))) {
+            userSub.purchasedModules.push({
+              moduleId: String(mod._id),
+              purchasedAt: now,
+              amountPaid: 0,
+              orderId
+            });
+            unlockedCount++;
+          }
+        }
+      } catch (err) {
+        console.warn('[Payment] Error unlocking modules for chapter:', err);
+      }
     } else {
       // Pay-Per-Lesson purchase (supports single or multi-lesson)
       const targetModuleIds = (Array.isArray(moduleIds) && moduleIds.length > 0)
@@ -699,7 +959,7 @@ export const verifyPayment = async (req, res) => {
             ? transaction.itemDetails.moduleIds 
             : (moduleId || transaction?.itemDetails?.moduleId ? [moduleId || transaction.itemDetails.moduleId] : []));
 
-      const unitPrice = transaction?.itemDetails?.unitPrice || plan?.amount || 19;
+      const unitPrice = transaction?.itemDetails?.unitPrice || plan?.amount || 50;
 
       for (const mId of targetModuleIds) {
         const alreadyPurchased = userSub.purchasedModules.some(m => String(m.moduleId) === String(mId));
@@ -723,13 +983,16 @@ export const verifyPayment = async (req, res) => {
       success: true,
       message: isSubscription 
         ? `${plan.billingCycle === 'annual' ? 'Annual' : 'Monthly'} pass activated! Enjoy full unlimited access.` 
-        : (userSub ? `${unlockedCount > 1 ? `${unlockedCount} lessons` : 'Lesson'} unlocked successfully!` : 'Payment signature verified successfully'),
+        : (isChapterPurchase 
+            ? 'Chapter unlocked successfully for 1 full year! Exam Mode & all lessons are now active.'
+            : (userSub ? `${unlockedCount > 1 ? `${unlockedCount} lessons` : 'Lesson'} unlocked successfully!` : 'Payment signature verified successfully')),
       transactionId: transaction?._id,
       paymentId,
       orderId,
       subscription: userSub ? {
         status: userSub.status,
         currentPeriodEnd: userSub.currentPeriodEnd,
+        purchasedChapters: userSub.purchasedChapters,
         purchasedModules: userSub.purchasedModules
       } : null
     });
@@ -745,7 +1008,7 @@ export const verifyPayment = async (req, res) => {
  */
 export const mockSuccessPayment = async (req, res) => {
   try {
-    const { planCode, moduleId, moduleIds } = req.body;
+    const { planCode, moduleId, moduleIds, chapterId } = req.body;
     const user = req.user;
 
     const config = await PaymentConfig.findOne({ singletonKey: 'default' });
@@ -753,7 +1016,9 @@ export const mockSuccessPayment = async (req, res) => {
       return res.status(403).json({ message: 'Mock sandbox mode is disabled' });
     }
 
-    const plan = await SubscriptionPlan.findOne({ code: planCode, isActive: true });
+    const plan = await SubscriptionPlan.findOne({ code: planCode, isActive: true }) ||
+                 await SubscriptionPlan.findOne({ code: 'pay_per_chapter' }) ||
+                 await SubscriptionPlan.findOne({ code: planCode });
     if (!plan) {
       return res.status(404).json({ message: 'Plan not found' });
     }
@@ -761,28 +1026,47 @@ export const mockSuccessPayment = async (req, res) => {
     const mockOrderId = `order_mock_${crypto.randomBytes(6).toString('hex')}`;
     const mockPaymentId = `pay_mock_${crypto.randomBytes(6).toString('hex')}`;
 
+    let targetChapterId = chapterId;
+    if (!targetChapterId && moduleId && mongoose.isValidObjectId(moduleId)) {
+      const mod = await Module.findById(moduleId).lean();
+      if (mod?.chapterId) targetChapterId = String(mod.chapterId);
+    }
+
+    const isChapterPurchase = plan.type === 'pay_per_chapter' || plan.code === 'pay_per_chapter' || Boolean(targetChapterId);
+
     const targetModuleIds = Array.isArray(moduleIds) && moduleIds.length > 0 
       ? moduleIds 
       : (moduleId ? [moduleId] : []);
 
-    const unitPrice = plan.amount || 19;
-    const totalAmount = plan.type === 'pay_per_lesson' 
-      ? (unitPrice * (targetModuleIds.length || 1)) 
-      : plan.amount;
-
     let itemDetails = {};
-    if (plan.type === 'pay_per_lesson' && targetModuleIds.length > 0) {
-      const validObjIds = targetModuleIds.filter(id => mongoose.isValidObjectId(id));
-      const mods = validObjIds.length > 0 ? await Module.find({ _id: { $in: validObjIds } }).lean() : [];
+    let totalAmount = plan.amount || 50;
+
+    if (isChapterPurchase && targetChapterId) {
+      const ch = mongoose.isValidObjectId(targetChapterId) ? await Chapter.findById(targetChapterId).lean() : null;
+      const unitPrice = ch?.chapterPrice ?? ch?.lessonPrice ?? plan.amount ?? config?.defaultChapterPrice ?? 50;
+      totalAmount = unitPrice;
       itemDetails = {
-        moduleId: targetModuleIds[0],
-        moduleTitle: mods[0]?.title || `Lesson ${targetModuleIds[0]}`,
-        chapterTitle: mods[0]?.chapterTitle || '',
-        moduleIds: targetModuleIds,
-        moduleTitles: mods.map(m => m.title),
-        count: targetModuleIds.length,
+        chapterId: String(targetChapterId),
+        chapterTitle: ch?.title || `Chapter ${targetChapterId}`,
+        validityDays: 365,
         unitPrice
       };
+    } else if (plan.type === 'pay_per_lesson') {
+      const unitPrice = plan.amount || 50;
+      totalAmount = unitPrice * (targetModuleIds.length || 1);
+      if (targetModuleIds.length > 0) {
+        const validObjIds = targetModuleIds.filter(id => mongoose.isValidObjectId(id));
+        const mods = validObjIds.length > 0 ? await Module.find({ _id: { $in: validObjIds } }).lean() : [];
+        itemDetails = {
+          moduleId: targetModuleIds[0],
+          moduleTitle: mods[0]?.title || `Lesson ${targetModuleIds[0]}`,
+          chapterTitle: mods[0]?.chapterTitle || '',
+          moduleIds: targetModuleIds,
+          moduleTitles: mods.map(m => m.title),
+          count: targetModuleIds.length,
+          unitPrice
+        };
+      }
     }
 
     // Save transaction
@@ -794,7 +1078,7 @@ export const mockSuccessPayment = async (req, res) => {
       amount: totalAmount, // In plain Rupees
       currency: 'INR',
       status: 'captured',
-      paymentType: plan.type === 'subscription' ? 'subscription' : 'pay_per_lesson',
+      paymentType: plan.type === 'subscription' ? 'subscription' : (isChapterPurchase ? 'pay_per_chapter' : 'pay_per_lesson'),
       planCode: plan.code,
       itemDetails,
       userSnapshot: {
@@ -826,6 +1110,49 @@ export const mockSuccessPayment = async (req, res) => {
         userSub.currentPeriodStart = now;
       }
       userSub.currentPeriodEnd = periodEnd;
+    } else if (isChapterPurchase && targetChapterId) {
+      const now = new Date();
+      if (!userSub.purchasedChapters) userSub.purchasedChapters = [];
+      const existingPurchase = userSub.purchasedChapters.find(c => String(c.chapterId) === String(targetChapterId));
+      let expiresAt;
+      if (existingPurchase && new Date(existingPurchase.expiresAt) > now) {
+        expiresAt = new Date(new Date(existingPurchase.expiresAt).getTime() + 365 * 24 * 60 * 60 * 1000);
+        existingPurchase.expiresAt = expiresAt;
+        existingPurchase.amountPaid = (existingPurchase.amountPaid || 0) + totalAmount;
+        existingPurchase.orderId = mockOrderId;
+      } else if (existingPurchase) {
+        expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+        existingPurchase.purchasedAt = now;
+        existingPurchase.expiresAt = expiresAt;
+        existingPurchase.amountPaid = totalAmount;
+        existingPurchase.orderId = mockOrderId;
+      } else {
+        expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+        userSub.purchasedChapters.push({
+          chapterId: String(targetChapterId),
+          purchasedAt: now,
+          expiresAt,
+          amountPaid: totalAmount,
+          orderId: mockOrderId
+        });
+      }
+
+      // Also auto-unlock modules in that chapter for backwards compatibility
+      try {
+        const chapterModules = await Module.find({ chapterId: targetChapterId }).select('_id').lean();
+        for (const mod of chapterModules) {
+          if (!userSub.purchasedModules.some(m => String(m.moduleId) === String(mod._id))) {
+            userSub.purchasedModules.push({
+              moduleId: String(mod._id),
+              purchasedAt: now,
+              amountPaid: 0,
+              orderId: mockOrderId
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[Payment] Error unlocking modules for mock chapter:', err);
+      }
     } else if (targetModuleIds.length > 0) {
       for (const mId of targetModuleIds) {
         const already = userSub.purchasedModules.some(m => String(m.moduleId) === String(mId));
@@ -833,7 +1160,7 @@ export const mockSuccessPayment = async (req, res) => {
           userSub.purchasedModules.push({
             moduleId: mId,
             purchasedAt: new Date(),
-            amountPaid: unitPrice,
+            amountPaid: plan.amount || 50,
             orderId: mockOrderId
           });
         }
@@ -844,7 +1171,9 @@ export const mockSuccessPayment = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Sandbox Mock Payment simulated successfully!',
+      message: isChapterPurchase 
+        ? 'Chapter unlocked for 1 year in Sandbox Test!' 
+        : 'Sandbox Mock Payment simulated successfully!',
       orderId: mockOrderId,
       paymentId: mockPaymentId,
       subscription: userSub

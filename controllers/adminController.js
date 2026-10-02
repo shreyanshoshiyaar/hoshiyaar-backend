@@ -285,7 +285,7 @@ export const getUsersAnalytics = async (req, res) => {
       ]),
       // Fetch user documents for the table (excluding heavy 50MB+ pointsLedger)
       User.find({ role: { $ne: 'admin' } })
-        .select('username name email phone school region city country classLevel isGuest onboardingCompleted platform totalPoints chaptersProgress createdAt lastActiveAt activeDaysCount whatsappNudges funnelStage')
+        .select('username name email phone school region city country classLevel isGuest onboardingCompleted platform totalPoints chaptersProgress createdAt lastActiveAt activeDaysCount whatsappNudges funnelStage role')
         .sort({ _id: -1 })
         .limit(limit)
         .lean(),
@@ -382,7 +382,8 @@ export const getUsersAnalytics = async (req, res) => {
         lastSessionModuleId,
         activeDaysCount: dynamicActiveDays,
         whatsappNudges: user.whatsappNudges || {},
-        funnelStage: user.funnelStage || 'signed_up'
+        funnelStage: user.funnelStage || 'signed_up',
+        role: user.role || 'user'
       };
     });
 
@@ -553,6 +554,30 @@ export const updateUserSchool = async (req, res) => {
       const updatedUser = await user.save();
       cachedAnalytics = null; // Invalidate cache
       res.json({ success: true, user: updatedUser });
+    } else {
+      res.status(404).json({ message: 'User not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: `Server Error: ${error.message}` });
+  }
+};
+
+// @desc    Update a user's role (e.g. assign 'teacher' or 'user')
+// @route   PUT /api/admin/users/:id/role
+// @access  Private/Admin
+export const updateUserRole = async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!role || !['user', 'teacher', 'admin'].includes(role)) {
+      return res.status(400).json({ message: 'Invalid role specified. Must be user, teacher, or admin.' });
+    }
+    const user = await User.findById(req.params.id);
+
+    if (user) {
+      user.role = role;
+      const updatedUser = await user.save();
+      cachedAnalytics = null; // Invalidate cache
+      res.json({ success: true, user: { _id: updatedUser._id, role: updatedUser.role } });
     } else {
       res.status(404).json({ message: 'User not found' });
     }
@@ -801,7 +826,7 @@ export const exportUsersCSV = async (req, res) => {
 
     const [rawUsers, userLedgerMap] = await Promise.all([
       User.find(query)
-        .select('username name email phone school region city country classLevel isGuest onboardingCompleted platform totalPoints chaptersProgress createdAt lastActiveAt activeDaysCount whatsappNudges funnelStage')
+        .select('username name email phone school region city country classLevel isGuest onboardingCompleted platform totalPoints chaptersProgress createdAt lastActiveAt activeDaysCount whatsappNudges funnelStage role')
         .sort({ _id: -1 })
         .lean(),
       getUserLedgerStatsMap(req.query.refresh === 'true')
@@ -913,7 +938,7 @@ export const exportUsersCSV = async (req, res) => {
         escapeCSV(user.city || ''),
         escapeCSV(user.country || ''),
         escapeCSV(user.classLevel || 'Not Specified'),
-        escapeCSV(user.isGuest ? 'Guest' : 'Registered'),
+        escapeCSV(user.role === 'teacher' ? 'Teacher' : (user.isGuest ? 'Guest' : 'Student')),
         escapeCSV(user.platform || 'unknown'),
         user.totalPoints || 0,
         useTime,
@@ -1211,5 +1236,145 @@ export const getNotificationAnalytics = async (req, res) => {
     res.status(500).json({ message: `Server Error: ${error.message}` });
   }
 };
+
+// @desc    Get teacher-wise analytics: classrooms count, student counts, and classroom breakdown
+// @route   GET /api/admin/teachers-analytics
+// @access  Private/Admin
+export const getTeachersAnalytics = async (req, res) => {
+  try {
+    const Classroom = (await import('../models/Classroom.js')).default;
+    const Assignment = (await import('../models/Assignment.js')).default;
+
+    // 1. Fetch all active classrooms with teacher & students populated
+    const classrooms = await Classroom.find({ isActive: { $ne: false } })
+      .populate('teacherId', 'name username phone email school role createdAt lastActiveAt')
+      .populate('students', 'name username phone email school classLevel totalPoints')
+      .lean();
+
+    // 2. Fetch all users explicitly marked with role 'teacher'
+    const teachersList = await User.find(
+      { role: 'teacher' },
+      'name username phone email school role createdAt lastActiveAt'
+    ).lean();
+
+    // 3. Count assignments per classroom
+    const assignments = await Assignment.find({}, 'classroomId').lean();
+    const assignmentCountMap = {};
+    for (const a of assignments) {
+      if (a.classroomId) {
+        const cId = a.classroomId.toString();
+        assignmentCountMap[cId] = (assignmentCountMap[cId] || 0) + 1;
+      }
+    }
+
+    // 4. Map teacherId -> stats
+    const teacherMap = {};
+
+    // Initialize all users with role 'teacher'
+    for (const t of teachersList) {
+      const tId = t._id.toString();
+      teacherMap[tId] = {
+        teacher: t,
+        classrooms: [],
+        totalStudentsCount: 0,
+        uniqueStudentIds: new Set(),
+        totalAssignmentsCount: 0
+      };
+    }
+
+    // Populate classrooms
+    for (const c of classrooms) {
+      const t = c.teacherId;
+      const tId = t?._id ? t._id.toString() : (t ? t.toString() : null);
+      if (!tId) continue;
+
+      if (!teacherMap[tId]) {
+        const tUser = t?._id ? t : (await User.findById(tId, 'name username phone email school role createdAt lastActiveAt').lean()) || {
+          _id: tId,
+          name: 'Unknown Teacher',
+          username: 'unknown',
+          phone: '',
+          email: '',
+          school: c.school || ''
+        };
+        teacherMap[tId] = {
+          teacher: tUser,
+          classrooms: [],
+          totalStudentsCount: 0,
+          uniqueStudentIds: new Set(),
+          totalAssignmentsCount: 0
+        };
+      }
+
+      const students = Array.isArray(c.students) ? c.students : [];
+      students.forEach(s => {
+        const sId = s?._id ? s._id.toString() : String(s);
+        teacherMap[tId].uniqueStudentIds.add(sId);
+      });
+
+      const numAssignments = assignmentCountMap[c._id.toString()] || 0;
+      teacherMap[tId].totalAssignmentsCount += numAssignments;
+
+      teacherMap[tId].classrooms.push({
+        _id: c._id,
+        name: c.name,
+        code: c.code,
+        subject: c.subject,
+        classLevel: c.classLevel,
+        school: c.school || teacherMap[tId].teacher?.school || '',
+        studentCount: students.length,
+        assignmentsCount: numAssignments,
+        students: students.map(s => ({
+          _id: s?._id || s,
+          name: s?.name || '',
+          username: s?.username || '',
+          phone: s?.phone || '',
+          school: s?.school || '',
+          classLevel: s?.classLevel || '',
+          totalPoints: s?.totalPoints || 0
+        })),
+        createdAt: c.createdAt
+      });
+      teacherMap[tId].totalStudentsCount += students.length;
+    }
+
+    // Build array sorted by most classrooms, then students
+    const teacherStats = Object.values(teacherMap).map(item => ({
+      teacher: item.teacher,
+      classroomsCount: item.classrooms.length,
+      totalStudentsCount: item.totalStudentsCount,
+      uniqueStudentsCount: item.uniqueStudentIds.size,
+      totalAssignmentsCount: item.totalAssignmentsCount,
+      classrooms: item.classrooms.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    })).sort((a, b) => b.classroomsCount - a.classroomsCount || b.totalStudentsCount - a.totalStudentsCount);
+
+    const allUniqueStudentIds = new Set();
+    classrooms.forEach(c => {
+      (c.students || []).forEach(s => {
+        const sId = s?._id ? s._id.toString() : String(s);
+        allUniqueStudentIds.add(sId);
+      });
+    });
+
+    res.json({
+      success: true,
+      summary: {
+        totalTeachers: teacherStats.length,
+        activeTeachersCount: teacherStats.filter(t => t.classroomsCount > 0).length,
+        totalClassrooms: classrooms.length,
+        totalEnrollments: classrooms.reduce((acc, c) => acc + (c.students?.length || 0), 0),
+        totalUniqueStudents: allUniqueStudentIds.size,
+        avgStudentsPerClassroom: classrooms.length > 0
+          ? Math.round(classrooms.reduce((acc, c) => acc + (c.students?.length || 0), 0) / classrooms.length)
+          : 0
+      },
+      teachers: teacherStats
+    });
+  } catch (error) {
+    console.error('🔥 Error in getTeachersAnalytics:', error);
+    res.status(500).json({ message: `Server Error: ${error.message}` });
+  }
+};
+
 
 

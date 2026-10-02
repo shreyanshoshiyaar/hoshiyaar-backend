@@ -16,6 +16,13 @@ const UserSubscriptionSchema = new mongoose.Schema({
     amountPaid: { type: Number, default: 0 }, // In Rupees
     orderId: { type: String }
   }],
+  purchasedChapters: [{
+    chapterId: { type: String, required: true },
+    purchasedAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date, required: true }, // Valid for 1 year (365 days)
+    amountPaid: { type: Number, default: 50 }, // In Rupees
+    orderId: { type: String }
+  }],
   assignedVariant: { type: String, default: '' }, // A/B test bucket: control_free, monthly_only, pay_per_lesson_only, hybrid
   firstActiveDate: { type: Date, default: Date.now }, // Date for 30-day usage calculation
   cancelAtPeriodEnd: { type: Boolean, default: false },

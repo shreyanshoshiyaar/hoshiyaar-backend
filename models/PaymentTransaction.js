@@ -15,7 +15,7 @@ const PaymentTransactionSchema = new mongoose.Schema({
   },
   paymentType: { 
     type: String, 
-    enum: ['subscription', 'pay_per_lesson'], 
+    enum: ['subscription', 'pay_per_lesson', 'pay_per_chapter', 'custom'], 
     required: true 
   },
   planCode: { type: String, default: '' },

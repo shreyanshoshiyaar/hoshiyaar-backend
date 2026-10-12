@@ -97,7 +97,9 @@ async function run() {
     let rawType = getCol(row, ['type']);
     
     const isRowEmpty = Object.values(row).every(val => !String(val).trim());
-    if (isRowEmpty) continue;
+    if (isRowEmpty || (!moduleTitle && !rawType && !getCol(row, ['question', 'statement', 'text'])) || (boardName.trim().toLowerCase() === 'board' && className.trim().toLowerCase() === 'class')) {
+      continue;
+    }
 
     if (!chapterTitle) {
       console.error(`[Error] Row ${rowNum}: Missing 'chapter' title.`);
@@ -109,10 +111,19 @@ async function run() {
       errors++;
       continue;
     }
+    const conceptText = getCol(row, ['concept', 'statement']).trim();
+    const questionText = getCol(row, ['question']).trim();
+
     if (!rawType) {
-      console.error(`[Error] Row ${rowNum}: Missing 'type'.`);
-      errors++;
-      continue;
+      if (conceptText && !questionText) {
+        console.warn(`[Warning] Row ${rowNum}: Missing 'type', but has concept statement. Defaulting to 'concept'.`);
+        warnings++;
+        rawType = 'concept';
+      } else {
+        console.error(`[Error] Row ${rowNum}: Missing 'type'.`);
+        errors++;
+        continue;
+      }
     }
 
     // Remove HOT MODULE replacement as per user request to keep difficult modules named literally
@@ -122,9 +133,6 @@ async function run() {
     else if (typeStr === 're-arrange') typeStr = 'rearrange';
     else if (typeStr === 'fill-in-the-blank' || typeStr === 'fib') typeStr = 'fill-in-the-blank';
     else if (typeStr.includes('mcq')) typeStr = 'multiple-choice';
-
-    const conceptText = getCol(row, ['concept', 'statement']).trim();
-    const questionText = getCol(row, ['question']).trim();
     const answerText = getCol(row, ['answer']).trim();
     const keywordsText = getCol(row, ['keyword']).trim(); // For descriptive questions
     const optionsRaw = getCol(row, ['options', 'words']).trim();
